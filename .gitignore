@@ -1,1 +1,10 @@
 Manifest.toml
+
+# IDE / editor files
+.idea/
+*.iml
+.vscode/
+*.code-workspace
+*.swp
+*~
+.DS_Store
