@@ -53,6 +53,30 @@ SymJOSR.integrate(sqrt(a + b*x)/x, x; trace = true)
 `_run_problem(expr, R, timeout)` runs a single test problem, given the `"expression"`
 field of a fixture.
 
+### Survey of all test files (session 2)
+
+A seeded sample of 40 problems from each of the 215 test files (7,876 problems, 3 s
+limit). Per-problem results are in `notes/session2/data/` (not committed); the runners
+are in `notes/session2/scripts/` (`survey2.jl`, `survey_driver.sh`).
+
+| section | problems | verified, survey 1 | verified, survey 2 |
+|:--|--:|--:|--:|
+| 0 independent | 352 | 132 | 135 (38%) |
+| 1 algebraic | 1,530 | 721 | 793 (52%) |
+| 2 exponentials | 120 | 61 | 66 (55%) |
+| 3 logarithms | 360 | 110 | 140 (39%) |
+| 4 trig | 2,683 | 436 | 513 (19%); 530 with the trig predicates |
+| 5 inverse trig | 683 | 201 | 250 (37%) |
+| 6 hyperbolic | 978 | 65 | 73 (7%) |
+| 7 inverse hyperbolic | 800 | 240 | 267 (33%) |
+| 8 special | 370 | 112 | 121 (33%) |
+| total | 7,876 | 2,078 (26%) | 2,358 (30%) |
+
+Survey 1 ran the code of PR #2; survey 2 the `survey-fixes` branch before its trig
+predicates. Survey 1 had 83 errors (test problems that could not be read) and 7
+problems that never returned (answer checks in SymJ's certified `N`); survey 2 has none.
+Hyperbolic functions are the weakest section.
+
 ## 1. Speed: index the rules by the integrand's shape
 
 `_int` (src/integration.jl) tries every rule in load order, calling each
