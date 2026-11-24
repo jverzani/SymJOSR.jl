@@ -1,6 +1,8 @@
-# OSR (Mathematica) function heads and the SymJ functions they mean. A SymJ name that
-# SymJ does not know gives an inert function node: the result is right, only not
-# evaluated further (SinhIntegral, EllipticF, ...).
+# OSR (Mathematica) function heads and the SymJ functions they mean. A name SymJ does not
+# know gives an inert function node: the result is right, but SymJ can't evaluate or
+# differentiate it, so it can't be checked. src/specialfunctions.jl registers the ones
+# RUBI's answers use that SymJ lacks (logint, sinhint, coshint, EllipticF/E/Pi).
+# (AppellF1 and HypergeometricPFQ are still inert.)
 
 const FUNCTION_NAMES = Dict{String,Symbol}(
     # RUBI writes the integrand's trig functions in lower case ("inert" trig functions
@@ -16,10 +18,10 @@ const FUNCTION_NAMES = Dict{String,Symbol}(
     "Erf" => :erf, "Erfc" => :erfc, "Erfi" => :erfi,
     "FresnelS" => :fresnels, "FresnelC" => :fresnelc,
     "ProductLog" => :lambertw, "Gamma" => :gamma, "LogGamma" => :loggamma, "PolyGamma" => :polygamma,
-    "ExpIntegralEi" => :expinti, "ExpIntegralE" => :expint, "LogIntegral" => :li,
+    "ExpIntegralEi" => :expinti, "ExpIntegralE" => :expint, "LogIntegral" => :logint,
     "SinIntegral" => :sinint, "CosIntegral" => :cosint,
-    "SinhIntegral" => :SinhIntegral, "CoshIntegral" => :CoshIntegral,
-    "Zeta" => :zeta, "PolyLog" => :polylog,
+    "SinhIntegral" => :sinhint, "CoshIntegral" => :coshint,
+    "Zeta" => :zeta, "PolyLog" => :li,
     "Hypergeometric2F1" => :_₂F₁, "Hypergeometric1F1" => :_₁F₁,
     "EllipticF" => :EllipticF, "EllipticE" => :EllipticE, "EllipticPi" => :EllipticPi,
     "BesselJ" => :besselj, "BesselY" => :bessely, "BesselI" => :besseli, "BesselK" => :besselk,
