@@ -133,7 +133,16 @@ function load_rules(; files = nothing, reload::Bool = false)
         data = JSON.parsefile(joinpath(dir, "rules", f))
         rs = data["rules"]
         isempty(rs) && haskey(HOST_RULES, f) && (rs = HOST_RULES[f])
+        if haskey(HOST_MISSING, f)
+            have = JSON.json(rs)
+            extra = [r for r in HOST_MISSING[f] if !occursin("\"" * r["head"] * "\"", have)]
+            rs = vcat(extra, rs)
+        end
         for r in rs
+            fix = get(RULE_FIXES, (f, r["id"]), nothing)
+            if fix !== nothing && occursin(fix[1], JSON.json(r["result"]))
+                r = merge(r, Dict("result" => JSON.parse(replace(JSON.json(r["result"]), fix[1] => fix[2]))))
+            end
             x = try
                 _mkrule(f, r)
             catch err
@@ -229,8 +238,15 @@ function integrate(f, x::Sym; rules::RuleSet = load_rules(), trace::Bool = false
     finally
         _RULESET[], _TRACE[] = oldR, oldT
     end
-    v = v === nothing || _has_int(v) ? nothing : subs(v, X => x)
+    v = v === nothing || _has_int(v) ? nothing : subs(_tidy_result(v), X => x)
     trace ? (result = v, steps = steps) : v
 end
 
 _has_int(e::Sym) = (e.kind == SymJ.FN && e.name === :Int) || any(_has_int, e.args) || any(_has_int, e.exps)
+
+# an answer as it is shown: trig functions of v + π/2 and of imaginary arguments back as
+# those of v and hyperbolic ones, and i's multiplied out
+function _tidy_result(v)
+    w = _activate_hyperbolic(_unshift(v))
+    _has_imaginary(w) ? expand(w) : w
+end

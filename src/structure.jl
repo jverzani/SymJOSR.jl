@@ -208,3 +208,227 @@ FUNCS["KnownSineIntegrandQ"] = (u, x) -> _known_trig_integrand((sin, cos), u, x)
 FUNCS["KnownSecantIntegrandQ"] = (u, x) -> _known_trig_integrand((sec, csc), u, x)
 FUNCS["KnownTangentIntegrandQ"] = (u, x) -> _known_trig_integrand((tan,), u, x)
 FUNCS["KnownCotangentIntegrandQ"] = (u, x) -> _known_trig_integrand((cot,), u, x)
+
+# ---- hyperbolic functions as trig functions of imaginary arguments
+#
+# RUBI 4.16.1 integrates hyperbolic functions of linear arguments with its trig rules:
+# the first rule of 4.1.0.1, Int[u_, x_] := Int[DeactivateTrig[u, x], x] /;
+# FunctionOfTrigOfLinearQ[u, x], replaces sinh(v) with -i sin(i v), and so on (RUBI's
+# inert lower-case trig functions, which are SymJ's ordinary ones here). OSR does not
+# have that rule (it is wrapped in If[$LoadShowSteps, ...]): HOST_MISSING in
+# src/sums.jl stands in for it.
+
+# a hyperbolic function's trig form: f(v) = c * g(i v)
+const _HYP_TO_TRIG = Dict(:sinh => (:sin, -im), :cosh => (:cos, 1), :tanh => (:tan, -im),
+    :coth => (:cot, im), :sech => (:sec, 1), :csch => (:csc, im))
+
+_linear_in(v, x) = FUNCS["LinearQ"](v, x)
+
+function _deactivate_trig(u, x)
+    u isa Sym || return u
+    # an integer negative power of a hyperbolic function as a power of its reciprocal,
+    # as Mathematica has it (1/Cosh[x] is Sech[x]), before the conversion
+    if u.kind == SymJ.POW && u.args[1].kind == SymJ.FN && u.args[1].name in _HYPERBOLIC &&
+            _isinteger(u.args[2]) && _rat(u.args[2]) < 0
+        b = u.args[1]
+        return _deactivate_trig(apply_function(_RECIP[b.name], Sym[b.args[1]])^(-u.args[2]), x)
+    end
+    if u.kind == SymJ.FN && haskey(_HYP_TO_TRIG, u.name) && length(u.args) == 1 && _linear_in(u.args[1], x)
+        g, c = _HYP_TO_TRIG[u.name]
+        return Sym(c) * apply_function(g, Sym[expand(Sym(im) * u.args[1])])
+    end
+    isempty(u.args) && return u
+    SymJ._rw_parts(a -> _deactivate_trig(a, x), u)
+end
+# UnifyInertTrigFunction, in part: RUBI's sine rules integrate cos(v) as sin(v + π/2)
+# (4.1.1.1: Int[sin[c + Pi/2 + d x]] := Sin[c + d x]/d). An integrand with cos or sec but
+# no sin or csc is written that way: cos(v) = sin(v + π/2), sec(v) = csc(v + π/2),
+# tan(v) = -cot(v + π/2), cot(v) = -tan(v + π/2). (RUBI's 75 cases also rewrite some
+# products of both; those are left as they are: approximation.)
+const _SHIFT = Dict(:cos => (:sin, 1), :sec => (:csc, 1), :tan => (:cot, -1), :cot => (:tan, -1))
+function _trig_names!(out, u)
+    u isa Sym || return out
+    u.kind == SymJ.FN && u.name in _TRIG && push!(out, u.name)
+    foreach(a -> _trig_names!(out, a), u.args)
+    foreach(a -> _trig_names!(out, a), u.exps)
+    out
+end
+function _shift_cos(u, x)
+    u isa Sym || return u
+    if u.kind == SymJ.FN && haskey(_SHIFT, u.name) && length(u.args) == 1 && _linear_in(u.args[1], x)
+        g, c = _SHIFT[u.name]
+        return Sym(c) * apply_function(g, Sym[u.args[1] + SymJ.PI / 2])
+    end
+    isempty(u.args) && return u
+    SymJ._rw_parts(a -> _shift_cos(a, x), u)
+end
+# the arguments of the trig functions in u are linear in x and multiples of one another
+# by rational numbers
+function _trig_args!(out, u)
+    u isa Sym || return out
+    u.kind == SymJ.FN && u.name in _TRIG && length(u.args) == 1 && push!(out, u.args[1])
+    foreach(a -> _trig_args!(out, a), u.args)
+    foreach(a -> _trig_args!(out, a), u.exps)
+    out
+end
+function _commensurate_trig(u, x)
+    vs = _trig_args!(Sym[], u)
+    isempty(vs) && return false
+    v = :null
+    for w in vs
+        v = _function_of_trig(apply_function(:sin, Sym[w]), v, x)
+        v === false && return false
+    end
+    true
+end
+_shift_only(u, x, names) = u isa Sym && !isempty(u.args) ?
+    (u.kind == SymJ.FN && u.name in names && length(u.args) == 1 && _linear_in(u.args[1], x) ?
+        _shift_cos(u, x) : SymJ._rw_parts(a -> _shift_only(a, x, names), u)) : u
+function _unify_inert_trig(u, x)
+    ns = _trig_names!(Set{Symbol}(), u)
+    isempty(ns) && return u
+    _commensurate_trig(u, x) || return u
+    # only cos and sec: sines; only cot: tangents. (Mixed forms such as sec^m (a + b tan)^n
+    # or cot^n (a + b csc)^m have their own rules, 4.3.1.2 and 4.6.1.4, and are left as
+    # they are.)
+    issubset(ns, (:cos, :sec)) && return _shift_cos(u, x)
+    ns == Set([:cot]) && return _shift_only(u, x, (:cot,))
+    u
+end
+
+FUNCS["DeactivateTrig"] = (u, x = X) -> _unify_inert_trig(_deactivate_trig(_s(u), _s(x)), _s(x))
+# (ours: the rule from 4.1.0.1 applies only when it changes the integrand; RUBI's
+# active and inert trig functions are the same functions here)
+FUNCS["DeactivateChangesQ"] = (u, x) -> !isequal(FUNCS["DeactivateTrig"](u, x), _s(u))
+
+# results: trig functions of v + π/2 back to those of v
+const _UNSHIFT = Dict(:sin => (:cos, 1), :cos => (:sin, -1), :tan => (:cot, -1), :cot => (:tan, -1),
+    :sec => (:csc, -1), :csc => (:sec, 1))
+function _unshift(u)
+    u isa Sym || return u
+    if u.kind == SymJ.FN && haskey(_UNSHIFT, u.name) && length(u.args) == 1
+        w = expand(u.args[1] - SymJ.PI / 2)
+        if !has(w, SymJ.PI)
+            g, c = _UNSHIFT[u.name]
+            return Sym(c) * apply_function(g, Sym[_unshift(w)])
+        end
+    end
+    isempty(u.args) && return u
+    SymJ._rw_parts(_unshift, u)
+end
+
+# a trig function of an imaginary argument back as a hyperbolic one: g(i w) = c * f(w)
+const _TRIG_TO_HYP = Dict(:sin => (:sinh, im), :cos => (:cosh, 1), :tan => (:tanh, im),
+    :cot => (:coth, -im), :sec => (:sech, 1), :csc => (:csch, -im),
+    # and inverse functions: atanh(i w) = i atan(w), atan(i w) = i atanh(w)
+    :atanh => (:atan, im), :atan => (:atanh, im))
+function _activate_hyperbolic(u)
+    u isa Sym || return u
+    if u.kind == SymJ.FN && haskey(_TRIG_TO_HYP, u.name) && length(u.args) == 1
+        w = expand(u.args[1] / Sym(im))
+        if !has(w, Sym(im)) && !_has_imaginary(w)
+            f, c = _TRIG_TO_HYP[u.name]
+            return Sym(c) * apply_function(f, Sym[w])
+        end
+    end
+    isempty(u.args) && return u
+    SymJ._rw_parts(_activate_hyperbolic, u)
+end
+# (SymJ's i is (-1)^(1/2), a power; a float complex number is a number)
+_has_imaginary(e::Sym) = has(e, Sym(im)) || (e.kind == SymJ.NUMBER && !iszero(imag(e.num))) ||
+    ((e.kind == SymJ.ADD || e.kind == SymJ.MUL) && !iszero(imag(e.num))) ||
+    any(_has_imaginary, e.args) || any(_has_imaginary, e.exps)
+FUNCS["ActivateTrig"] = u -> _activate_hyperbolic(_unshift(_s(u)))
+
+# FunctionOfTrig[u, v, x]: the common linear argument (up to a rational factor) of the
+# trig and hyperbolic functions in u, :null when there are none, false when x appears
+# outside them or the arguments are not commensurate
+function _function_of_trig(u, v, x)
+    u isa Sym || return v
+    isempty(u.args) && return isequal(u, x) ? false : v
+    if u.kind == SymJ.FN && length(u.args) == 1 && (u.name in _TRIG || u.name in _HYPERBOLIC) && _linear_in(u.args[1], x)
+        w = u.name in _TRIG ? u.args[1] : Sym(im) * u.args[1]
+        v === :null && return w
+        C = FUNCS["Coefficient"]
+        a, b, c, d = C(v, x, Sym(0)), C(v, x, Sym(1)), C(w, x, Sym(0)), C(w, x, Sym(1))
+        q = b / d
+        (_eq(a * d - b * c, 0) && _isrational(q)) || return false
+        n = Sym(numerator(_rat(q)))
+        return a / n + b * x / n
+    end
+    u.kind == SymJ.FN && u.name in (:Int, :Derivative) && return false
+    w = v
+    for a in Iterators.flatten((u.args, u.exps))
+        w = _function_of_trig(a, w, x)
+        w === false && return false
+    end
+    w
+end
+
+# AlgebraicTrigFunctionQ[u, x]: u is built with +, * and powers free of x from constants,
+# x, and trig and hyperbolic functions of linear functions of x
+function _algebraic_trig(u, x)
+    u isa Sym || return true
+    has(u, x) || return true
+    k = u.kind
+    k == SymJ.SYMBOL && return true
+    if k == SymJ.FN
+        return length(u.args) == 1 && (u.name in _TRIG || u.name in _HYPERBOLIC) && _linear_in(u.args[1], x)
+    end
+    k == SymJ.POW && return !has(u.args[2], x) && _algebraic_trig(u.args[1], x)
+    all(e -> !has(e, x), u.exps) && all(a -> _algebraic_trig(a, x), u.args)
+end
+
+const _FOTL = Ref{Any}(nothing)
+function _fotl_pattern()
+    _FOTL[] === nothing || return _FOTL[]
+    trig = Any["trig_", Any["Add", "e.", Any["Multiply", "f.", "x_"]]]
+    p = Any["Multiply", Any["Power", Any["Add", "c.", Any["Multiply", "d.", "x_"]], "m."],
+        Any["Power", Any["Add", "a.", Any["Multiply", "b.", trig]], "n."]]
+    _FOTL[] = SymJ.pattern(pat(p))
+end
+
+function _function_of_trig_of_linear(u, x)
+    u = _s(u)
+    for m in eachmatch(_fotl_pattern(), u)
+        n = _fname(m[:trig])
+        (n in _TRIG || n in _HYPERBOLIC) || continue
+        all(k -> k === :trig || !has(_s(m[k]), x), keys(m)) && return true
+    end
+    w = _function_of_trig(u, :null, x)
+    w !== :null && w !== false && _algebraic_trig(u, x)
+end
+FUNCS["FunctionOfTrigOfLinearQ"] = (u, x) -> _function_of_trig_of_linear(_s(u), _s(x))
+FUNCS["FunctionOfTrig"] = (u, v, x) -> (w = _function_of_trig(_s(u), v === nothing ? :null : v, _s(x)); w === :null ? nothing : w)
+
+# (ours: the rule from 4.1.0.1 changes nothing here unless u has a hyperbolic function)
+_has_hyperbolic(u) = u isa Sym && ((u.kind == SymJ.FN && u.name in _HYPERBOLIC) ||
+    any(_has_hyperbolic, u.args) || any(_has_hyperbolic, u.exps))
+FUNCS["HasHyperbolicQ"] = u -> _has_hyperbolic(_s(u))
+
+# Mathematica writes an integer negative power of a trig or hyperbolic function as a
+# power of its reciprocal (1/Sin[x] is Csc[x]); SymJ keeps sin(x)^-1. Our trig functions
+# are both RUBI's active and inert ones, and integrands do better left as they are (RUBI's
+# inert-trig rules take cos^2/sin^3; with csc^3 it went to the active-trig rules of 4.7.9,
+# many of which OSR does not have). _mma_trig is not applied to integrands for now; the
+# reciprocal table is used for hyperbolic powers in _deactivate_trig.
+const _RECIP = Dict(:sin => :csc, :cos => :sec, :tan => :cot, :cot => :tan, :sec => :cos, :csc => :sin,
+    :sinh => :csch, :cosh => :sech, :tanh => :coth, :coth => :tanh, :sech => :cosh, :csch => :sinh)
+function _mma_trig(u)
+    u isa Sym || return u
+    isempty(u.args) && return u
+    if u.kind == SymJ.POW
+        b, e = u.args
+        if b.kind == SymJ.FN && haskey(_RECIP, b.name) && length(b.args) == 1 && _isinteger(e) && _rat(e) < 0
+            return apply_function(_RECIP[b.name], Sym[_mma_trig(b.args[1])])^(-e)
+        end
+    elseif u.kind == SymJ.MUL
+        any(i -> (b = u.args[i]; b.kind == SymJ.FN && haskey(_RECIP, b.name) && _isinteger(u.exps[i]) && _rat(u.exps[i]) < 0), eachindex(u.args)) ||
+            return SymJ._rw_parts(_mma_trig, u)
+        fs = [_mma_trig(b^e) for (b, e) in zip(u.args, u.exps)]
+        return Sym(u.num) * prod(fs)
+    end
+    SymJ._rw_parts(_mma_trig, u)
+end
+_has_trig_fn(u) = u isa Sym && ((u.kind == SymJ.FN && haskey(_RECIP, u.name)) || any(_has_trig_fn, u.args) || any(_has_trig_fn, u.exps))
+FUNCS["HasTrigQ"] = u -> _has_trig_fn(_s(u))
