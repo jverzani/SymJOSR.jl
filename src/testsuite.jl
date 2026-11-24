@@ -8,18 +8,50 @@ symbols, and `x` is the integration variable.
 """
 read_osr(n; free::Bool = true) = _s(ev(n, Ctx(Dict{Symbol,Any}(), 0, free)))
 
-# d/dx r == f, numerically at a few points (parameters and x in (0.3, 1.7))
+# d/dx r == f, numerically at a few points: parameters and x distinct rationals n/997 in
+# (0.3, 1.7), so not 1 or each other, where integrands are often singular. A point where
+# either side is infinite or can't be evaluated is a singularity, not a disagreement, and
+# is replaced. The points depend only on f, so a problem gets the same verdict every run.
+#
+# ₂F₁(a, b; c; z) is not continuous across its branch cut z ≥ 1, where the derivative
+# identities an answer rests on fail, so points that put a ₂F₁ argument there are
+# replaced too. Values are positive, as fractional powers then have their real values,
+# until a point puts a ₂F₁ on its cut; then they have either sign, as an argument such
+# as b x/a + 1 is above 1 for all positive values.
 function _verify(r::Sym, f::Sym; points = 3)
     d = diff(r, X) - f
-    syms = collect(SymJ.free_symbols(d) ∪ SymJ.free_symbols(f) ∪ Set([X]))
-    for _ in 1:points
-        ps = [s => Sym(rand(3:17) // 10) for s in syms]
-        dv = try N(subs(d, ps...)) catch; return false end
-        fv = try N(subs(f, ps...)) catch; 1.0 end
+    syms = sort!(collect(SymJ.free_symbols(d) ∪ SymJ.free_symbols(f) ∪ Set([X])); by = string)
+    rng = Random.Xoshiro(hash(string(f)))
+    zs = _hyp_args!(Sym[], r)
+    good, signed = 0, false
+    for _ in 1:(isempty(zs) ? 4 : 12) * points
+        vs = Random.randperm(rng, 1400)[1:length(syms)] .+ 299
+        ps = [s => Sym((signed && rand(rng, Bool) ? -v : v) // 997) for (s, v) in zip(syms, vs) if v != 997]
+        length(ps) == length(syms) || continue
+        any(z -> _on_cut(z, ps), zs) && (signed = true; continue)
+        dv = try N(subs(d, ps...)) catch; continue end
+        fv = try N(subs(f, ps...)) catch; continue end
         dv isa Number && fv isa Number || return false
+        isfinite(dv) && isfinite(fv) || continue
         abs(dv) <= 1e-8 * (1 + abs(fv)) || return false
+        (good += 1) == points && return true
     end
-    true
+    false
+end
+
+# the last arguments (z) of the ₂F₁s in e
+function _hyp_args!(out, e::Sym)
+    e.kind == SymJ.FN && e.name === :_₂F₁ && push!(out, e.args[end])
+    foreach(a -> _hyp_args!(out, a), e.args)
+    foreach(a -> _hyp_args!(out, a), e.exps)
+    out
+end
+
+# z at the point ps is on ₂F₁'s branch cut, [1, ∞), or can't be evaluated
+function _on_cut(z::Sym, ps)
+    v = try N(subs(z, ps...)) catch; return true end
+    v isa Number || return true
+    abs(imag(v)) <= 1e-12 * (1 + abs(v)) && real(v) >= 1 - 1e-12
 end
 
 """

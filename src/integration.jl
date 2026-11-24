@@ -174,6 +174,13 @@ const _DEADLINE = Ref(Inf)
 function _int(u::Sym, depth::Int)
     depth > MAXDEPTH[] && throw(GiveUp(u))
     time() > _DEADLINE[] && throw(TimedOut())
+    # constant factors outside: Int[a*u] = a*Int[u]. RUBI's results keep them outside
+    # (Star[a, Int[u, x]]), so its rules never see one; SymJ's canonical form puts them
+    # back in, where rules such as 1.1.3.7 #1 (Pq = a) rewrite the integrand to itself.
+    if u.kind == SymJ.MUL
+        c = FUNCS["FreeFactors"](u, X)
+        isone(c) || return c * _int(FUNCS["NonfreeFactors"](u, X), depth)
+    end
     R = _RULESET[]::RuleSet
     old = _DEPTH[]
     _DEPTH[] = depth

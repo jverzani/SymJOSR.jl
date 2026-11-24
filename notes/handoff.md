@@ -5,13 +5,24 @@ of priority. Read README.md first for how the package works.
 
 ## Where things stand
 
-- 4,987 of the 5,411 OSR rules in the files RUBI 4.16.1 loads become SymJ rules; the
-  other 424 use a head (predicate, utility or function) with no entry yet in
+- 4,988 of the 5,441 OSR rules in the files RUBI 4.16.1 loads become SymJ rules (OSR
+  commit 436f82c; 5,411 and 424 skipped at ed47124); the other 453 use a head (predicate, utility or function) with no entry yet in
   `FUNCS`/`SPECIAL`. `SymJOSR.unsupported_heads(SymJOSR.load_rules())` lists them.
-- Sample run, first 300 problems of `tests/.../1.1.1.2-(a+b-x)^m-(c+d-x)^n.json`
-  (timeout 1 s each): 288 verified, 9 unevaluated, 1 timeout, 2 "wrong".
-- `test/runtests.jl` passes (23 tests).
-- No complete run of section 1.1.1 (~900 problems) yet: too slow (problem 1 below).
+- Full run of `tests/.../1.1.1.2-(a+b-x)^m-(c+d-x)^n.json`, 1,971 problems, timeout
+  5 s (session 2, OSR commit 436f82c):
+
+  |              | verified | unevaluated | timeout | wrong |
+  |:--|--:|--:|--:|--:|
+  | session 1    | 1,132 | 402 | 276 | 161 |
+  | session 2    | 1,319 | 361 | 269 |  22 |
+
+  About 45 minutes, over half of it in the timeouts. The deadline is only checked on
+  entry to `_int`, so a timed-out problem typically runs 8-20 s, not 5.
+- `test/runtests.jl` passes (28 tests).
+- Item 1's premise did not hold up: profiling 120 problems put ~80% of `_int`'s time
+  in guards (mostly `simplify` in `_eq`, for EqQ/NeQ), only ~20% in trying rules. A
+  numeric probe before `simplify` made a full run slower (3,091 s vs 2,666 s) and was
+  reverted. Timeouts (item 3) are the bigger cost.
 
 ### Running things
 
@@ -81,21 +92,34 @@ Two separate questions:
   find RUBI's rule in `RubiUpstream/Rubi/IntegrationRules/1 Algebraic functions/1.1
   Binomial products/1.1.1 Linear/1.1.1.2 ...m` and check whether it loaded
   (`R.skipped`) and why its guard fails.
-- **Is the answer wrong, or the check?** `_verify` (src/testsuite.jl) puts parameters
-  and x in (0.3, 1.7), so `bx/a + 1 > 1`, on the branch cut of ₂F₁. The result may be
-  right and the numeric check wrong there. Try points with `bx/a + 1 < 1` (a < 0), and
-  consider making `_verify` count a problem as verified when it agrees at points where
-  every function is off its branch cut.
+- **Is the answer wrong, or the check?** The check (session 2). `_verify` now skips
+  points that put a ₂F₁ argument on its cut, z ≥ 1, and then samples values of either
+  sign; #294 and #295 verify. Its points are also seeded by the integrand (verdicts
+  were random from run to run) and avoid singular points such as x = 1. On 1.1.1.2:
+  161 "wrong" became 29. Two cube-root answers with a ₂F₁ (#417, #431) can't be
+  checked fairly: positive points are on the cut, negative ones change the cube
+  root's branch.
 
-## 3. Loop: (bx+a)(c+d)/e times out
+## 3. Loop: (bx+a)(c+d)/e times out — fixed (session 2)
 
-1.1.1.2 problem #162, `(b*x + a)*(c + d)/e`, hits the timeout. Likely two rules
-rewriting into each other (e.g. one factoring out the constant, another distributing
-it). With `MAXDEPTH[] = 8` and `DEBUG[] = true` the repeating rules show up in the
-printout. RUBI avoids such loops with guards like `SimplerQ`/`SumSimplerQ`, so this
-may be the same root cause as 2: an approximate predicate. If it is a SymJ
-canonical-form difference (SymJ distributes a number over a sum, `2(x+1)` → `2x+2`),
-the fix may be in the guard, not the rule.
+Two causes, both fixed:
+
+- **Absent terms.** SymJ lets a term `~!b*t` of a sum pattern be absent (b = 0);
+  Mathematica does not (`b_.` in a product defaults to 1, so `a_ + b_.*x_` needs a term
+  in x). `(c+d)` matched `a_ + b_.*x_` with b = 0, and 1.1.1.3 #1 rewrote #162 to itself.
+  `pat` now gives an optional factor of a product a nonzero predicate (`_nonzero_factor`,
+  src/osr.jl).
+- **Constant factors.** RUBI keeps constants outside (`Star[a, Int[u, x]]`); SymJ's
+  canonical form puts them back in, and with `Pq = c^-8`, 1.1.3.7 #1 rewrote
+  `Int[c^-8 (a+bx)^-3]` to itself. `_int` now integrates a product's free factors
+  out before trying rules.
+
+Lost by the first fix: #765 and #789, `(bx+a) (c x^2)^(±1/2)`. The rule for
+`(a x^n)^m` is in "9.1 Integrand simplification rules", which RUBI 4.16.1 does not
+load; before, they were solved only through the absent-term matching.
+
+**Timeouts are the open problem now**: ~270 of 1,971 problems in 1.1.1.2 hit the 5 s
+limit, and they are over half of a full run's time. #162 was not typical of them.
 
 ## 4. The unsupported heads
 

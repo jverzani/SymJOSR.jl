@@ -15,7 +15,7 @@ The rule data is downloaded on first use; see [`SymJOSR.rules_dir`](@ref).
 """
 module SymJOSR
 
-import CodecZlib, Downloads, JSON, Scratch, Tar
+import CodecZlib, Downloads, JSON, Random, Scratch, Tar
 using SymJ
 using SymJ: Sym, subs
 
