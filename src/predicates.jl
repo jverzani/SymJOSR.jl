@@ -25,8 +25,15 @@ function _numval(u)
     end
     v isa Number ? v : nothing
 end
+# (as RUBI's GtQ, N[Together[u]]: with symbols, over a common denominator first, so
+# b/(b c' - a d') with c' = b c/(b c - a d), d' = b d/(b c - a d) is 1. Without it,
+# 1.1.1.2 #32 never hands over to #31 and rewrites its own result until the timeout.)
 function _realval(u)
     v = _numval(u)
+    if v === nothing && u isa Sym && !isempty(free_symbols(u))
+        w = try cancel(u) catch err; err isa InterruptException && rethrow(); return nothing end
+        v = isempty(free_symbols(w)) ? _numval(w) : nothing
+    end
     v === nothing && return nothing
     v isa Real && return v
     abs(imag(v)) <= 1e-12 * max(1, abs(real(v))) ? real(v) : nothing

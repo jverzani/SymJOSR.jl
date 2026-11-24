@@ -8,26 +8,43 @@ symbols, and `x` is the integration variable.
 """
 read_osr(n; free::Bool = true) = _s(ev(n, Ctx(Dict{Symbol,Any}(), 0, free)))
 
-# d/dx r == f, numerically at a few points: parameters and x distinct rationals n/997 in
-# (0.3, 1.7), so not 1 or each other, where integrands are often singular. A point where
-# either side is infinite or can't be evaluated is a singularity, not a disagreement, and
-# is replaced. The points depend only on f, so a problem gets the same verdict every run.
+# d/dx r == f, numerically at a few points: parameters and x distinct rationals ±n/997
+# with n/997 in (0.3, 1.7), so not 1 or each other, where integrands are often singular.
+# A point where either side is infinite or can't be evaluated is a singularity, not a
+# disagreement, and is replaced. The points depend only on f, so a problem gets the
+# same verdict every run.
 #
-# ₂F₁(a, b; c; z) is not continuous across its branch cut z ≥ 1, where the derivative
-# identities an answer rests on fail, so points that put a ₂F₁ argument there are
-# replaced too. Values are positive, as fractional powers then have their real values,
-# until a point puts a ₂F₁ on its cut; then they have either sign, as an argument such
-# as b x/a + 1 is above 1 for all positive values.
+# Branch cuts can make the two sides differ where the answer is right. So first only
+# fair points are used: every base of a non-integer power, in r and in f, positive, and
+# every ₂F₁ argument off its cut z ≥ 1 (values positive at first, then of either sign:
+# an argument such as b x/a + 1 is above 1 for all positive values). Disagreement at a
+# fair point is "wrong". When too few fair points turn up in this range of values
+# (asin(2x - 5) needs 2 < x < 3), points need only keep the ₂F₁s off their cuts.
 function _verify(r::Sym, f::Sym; points = 3)
     d = diff(r, X) - f
     syms = sort!(collect(SymJ.free_symbols(d) ∪ SymJ.free_symbols(f) ∪ Set([X])); by = string)
-    rng = Random.Xoshiro(hash(string(f)))
     zs = _hyp_args!(Sym[], r)
+    bs = unique!(_frac_bases!(_frac_bases!(Sym[], r), f))
+    v = _verify_at(d, f, syms, zs, bs, points, Random.Xoshiro(hash(string(f))), true)
+    v === nothing || return v
+    _verify_at(d, f, syms, zs, Sym[], points, Random.Xoshiro(hash(string(f))), false) === true
+end
+
+# true (agreement at `points` points), false (a disagreement), or nothing (too few
+# points). `fair`: values positive for the first tries, then of either sign; otherwise
+# positive until a point puts a ₂F₁ on its cut.
+function _verify_at(d, f, syms, zs, bs, points, rng, fair)
     good, signed = 0, false
-    for _ in 1:(isempty(zs) ? 4 : 12) * points
+    for i in 1:(fair ? 20 : 12) * points
+        fair && (signed = i > 2points)
         vs = Random.randperm(rng, 1400)[1:length(syms)] .+ 299
+        # exact n/997, so that a rational answer with large cancellations is exact, but
+        # floats for an answer with a ₂F₁: SymJ's N of ₂F₁(a, b; c; z) at an exact
+        # z > 1/2 is wrong when c - a - b is an integer, e.g. ₂F₁(1, 1/3; 4/3; 3/4)
         ps = [s => Sym((signed && rand(rng, Bool) ? -v : v) // 997) for (s, v) in zip(syms, vs) if v != 997]
+        isempty(zs) || (ps = [s => Sym(Float64(v.num)) for (s, v) in ps])
         length(ps) == length(syms) || continue
+        all(b -> _positive_at(b, ps), bs) || continue
         any(z -> _on_cut(z, ps), zs) && (signed = true; continue)
         dv = try N(subs(d, ps...)) catch; continue end
         fv = try N(subs(f, ps...)) catch; continue end
@@ -36,7 +53,7 @@ function _verify(r::Sym, f::Sym; points = 3)
         abs(dv) <= 1e-8 * (1 + abs(fv)) || return false
         (good += 1) == points && return true
     end
-    false
+    nothing
 end
 
 # the last arguments (z) of the ₂F₁s in e
@@ -45,6 +62,27 @@ function _hyp_args!(out, e::Sym)
     foreach(a -> _hyp_args!(out, a), e.args)
     foreach(a -> _hyp_args!(out, a), e.exps)
     out
+end
+
+# the bases of the powers in e with an exponent that is not an integer
+function _frac_bases!(out, e::Sym)
+    if e.kind == SymJ.POW
+        _isinteger(e.args[2]) || push!(out, e.args[1])
+    elseif e.kind == SymJ.MUL
+        for (b, x) in zip(e.args, e.exps)
+            _isinteger(x) || push!(out, b)
+        end
+    end
+    foreach(a -> _frac_bases!(out, a), e.args)
+    foreach(a -> _frac_bases!(out, a), e.exps)
+    out
+end
+
+# b at the point ps is a positive real number
+function _positive_at(b::Sym, ps)
+    v = try N(subs(b, ps...)) catch; return false end
+    v isa Number && isfinite(v) || return false
+    abs(imag(v)) <= 1e-12 * (1 + abs(v)) && real(v) > 0
 end
 
 # z at the point ps is on ₂F₁'s branch cut, [1, ∞), or can't be evaluated

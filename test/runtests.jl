@@ -3,14 +3,9 @@ using Test, SymJ, SymJOSR
 const S = SymJOSR
 @syms x a b c d m
 
-# d/dx F == f, numerically
-function isantiderivative(F, f)
-    F === nothing && return false
-    all(1:3) do _
-        ps = [s => Sym(rand(3:17) // 10) for s in (x, a, b, c, d, m)]
-        abs(N(subs(diff(F, x) - f, ps...))) < 1e-9
-    end
-end
+# d/dx F == f, numerically (as the test problems are checked: repeatable points, away
+# from singularities such as a d = b c)
+isantiderivative(F, f) = F !== nothing && S._verify(subs(F, x => S.X), subs(f, x => S.X))
 
 @testset "patterns" begin
     @test S.pat("a_") == :(~a)
@@ -35,6 +30,9 @@ end
     @test F["LinearQ"](a + b * X, X) && !F["LinearQ"](X^2, X)
     @test F["PolyQ"](X^3 + a, X, Sym(3))
     @test F["SumSimplerQ"](Sym(-2), Sym(1)) == (-2 < -1)
+    # as RUBI's N[Together[u]]: b/(b c' - a d') is 1 for the c', d' of 1.1.1.2 #32
+    cc, dd = b * c / (b * c - a * d), b * d / (b * c - a * d)
+    @test F["GtQ"](b / (b * cc - a * dd), Sym(0))
 end
 
 # the rules come from SYMJOSR_INTEGRATION_DIR or a download
@@ -45,6 +43,9 @@ end
               1 / ((a + b * x) * (c + d * x)), x * (a + b * x)^5)
         @test isantiderivative(S.integrate(f, x; rules = R), f)
     end
+    # looped through 1.1.1.2 #32 until the timeout (1.1.1.2 #1514)
+    f = (a + b * x)^(7 // 2) * sqrt(c + d * x)
+    @test isantiderivative(S.integrate(f, x; rules = R), f)
     r = S.integrate((a + b * x)^3, x; rules = R, trace = true)
     @test !isempty(r.steps)
 end

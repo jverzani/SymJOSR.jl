@@ -14,15 +14,19 @@ of priority. Read README.md first for how the package works.
   |              | verified | unevaluated | timeout | wrong |
   |:--|--:|--:|--:|--:|
   | session 1    | 1,132 | 402 | 276 | 161 |
-  | session 2    | 1,319 | 361 | 269 |  22 |
+  | session 2, loops fixed | 1,319 | 361 | 269 |  22 |
+  | session 2, GtQ fixed   | 1,598 | 361 |   1 |  11 |
 
-  About 45 minutes, over half of it in the timeouts. The deadline is only checked on
-  entry to `_int`, so a timed-out problem typically runs 8-20 s, not 5.
-- `test/runtests.jl` passes (28 tests).
-- Item 1's premise did not hold up: profiling 120 problems put ~80% of `_int`'s time
-  in guards (mostly `simplify` in `_eq`, for EqQ/NeQ), only ~20% in trying rules. A
-  numeric probe before `simplify` made a full run slower (3,091 s vs 2,666 s) and was
-  reverted. Timeouts (item 3) are the bigger cost.
+  A full run now takes about 2 minutes (was 45). The deadline is only checked on
+  entry to `_int`, so a timed-out problem can run well past its limit.
+- `test/runtests.jl` passes (30 tests).
+- Item 1 is no longer pressing: the time went to timeouts, now gone. (Profiling 120
+  problems had put ~80% of `_int`'s time in guards, mostly `simplify` in `_eq`, only
+  ~20% in trying rules; a numeric probe before `simplify` made a full run slower and
+  was reverted.)
+- The 11 "wrong" are answers the check can't judge, not known errors: elliptic
+  integrals with complex coefficients (#1179-#1227) and ₂F₁(…, 3 - x) with
+  (3 - x)^(k/2) (#1166, #1167), on a cut at every point in range.
 
 ### Running things
 
@@ -118,8 +122,11 @@ Lost by the first fix: #765 and #789, `(bx+a) (c x^2)^(±1/2)`. The rule for
 `(a x^n)^m` is in "9.1 Integrand simplification rules", which RUBI 4.16.1 does not
 load; before, they were solved only through the absent-term matching.
 
-**Timeouts are the open problem now**: ~270 of 1,971 problems in 1.1.1.2 hit the 5 s
-limit, and they are over half of a full run's time. #162 was not typical of them.
+**The other timeouts: GtQ.** 268 of the 269 were 1.1.1.2 #32 rewriting its own result:
+RUBI's rule before it (#31, the ₂F₁ closed form) takes over once
+`GtQ[b/(b*c' - a*d'), 0]` holds for the new c', d', which needs RUBI's
+`N[Together[u]]` to see that the quotient is 1. `_realval` (order predicates, Max,
+Min) now cancels an expression with symbols before giving up on it.
 
 ## 4. The unsupported heads
 
@@ -149,6 +156,14 @@ Marked in the code: `PosQ` (Mathematica orders a sum's terms differently from Sy
 so they are the first suspects whenever a problem goes wrong or loops. RUBI's lower-case
 inert trig functions are mapped to the ordinary ones; the trig sections may need them
 kept apart (rules in 4.7.5 "Inert trig functions" convert between them).
+
+## Upstream: SymJ
+
+- `N` of ₂F₁(a, b; c; z) at an exact rational z > 1/2 is wrong when c - a - b is an
+  integer: `N(₂F₁(1, 1/3; 4/3; 3/4))` is 1.4228, at the float 0.75 it is 1.3773
+  (right); at z ≤ 1/2 they agree. (Probably the z → 1 - z transformation in its
+  logarithmic case.) `_verify` uses floats for answers with a ₂F₁ until it is fixed.
+  Not reported yet.
 
 ## Upstream (OpenSymbolicRules/Integration), reported 2026-11-23
 
