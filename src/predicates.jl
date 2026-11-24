@@ -201,8 +201,9 @@ end
 
 # u as a polynomial in x: its coefficients, lowest degree first, or nothing
 function _coeffs(u, x)
-    u = expand(_s(u))
     x = _s(x)
+    x.kind == SymJ.SYMBOL && !_maybe_poly(_s(u), x) && return nothing
+    u = expand(_s(u))
     has(u, x) || return Sym[u]
     try
         p = SymJ.Poly(u, x)
@@ -213,6 +214,28 @@ function _coeffs(u, x)
         nothing
     end
 end
+# u could be a polynomial in x: x is not inside a function, nor raised to a power that is
+# not a nonnegative integer. A quick test before expand and Poly, which were most of the
+# time of guards on trig integrands (PolyQ, LinearQ: 500 calls, 2.7 s for one problem).
+function _maybe_poly(u::Sym, x::Sym)
+    has(u, x) || return true
+    k = u.kind
+    k == SymJ.SYMBOL && return true
+    k == SymJ.FN && return false
+    if k == SymJ.POW
+        e = u.args[2]
+        return _isinteger(e) && _rat(e) >= 0 && _maybe_poly(u.args[1], x)
+    end
+    for (i, a) in enumerate(u.args)
+        if k == SymJ.MUL && has(a, x)
+            e = u.exps[i]
+            (_isinteger(e) && _rat(e) >= 0) || return false
+        end
+        _maybe_poly(a, x) || return false
+    end
+    true
+end
+
 function _coeffs_slow(u, x, d)
     terms = u.kind == SymJ.ADD ? [Sym(c) * a for (a, c) in zip(u.args, u.coefs)] : Sym[u]
     u.kind == SymJ.ADD && !iszero(u.num) && push!(terms, Sym(u.num))
