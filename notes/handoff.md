@@ -185,11 +185,11 @@ kept apart (rules in 4.7.5 "Inert trig functions" convert between them).
 
 ## Upstream: SymJ
 
-- `N` of ₂F₁(a, b; c; z) at an exact rational z > 1/2 is wrong when c - a - b is an
-  integer: `N(₂F₁(1, 1/3; 4/3; 3/4))` is 1.4228, at the float 0.75 it is 1.3773
-  (right); at z ≤ 1/2 they agree. (Probably the z → 1 - z transformation in its
-  logarithmic case.) `_verify` uses floats for answers with a ₂F₁ until it is fixed.
-  Not reported yet.
+- Fixed in SymJ main (012337a, 2026-11-24): `N` of ₂F₁(a, b; c; z) at an exact
+  rational z > 1/2 was wrong when c - a - b is an integer. `_verify` used floats for
+  answers with a ₂F₁ until then; it uses exact values again.
+- Julia 1.12: the CI job runs far longer than the others (SymJ needed inference
+  barriers and no coverage on 1.12; we have the latter). See the session 2 notes on CI.
 
 ## Upstream (OpenSymbolicRules/Integration), reported 2026-11-23
 

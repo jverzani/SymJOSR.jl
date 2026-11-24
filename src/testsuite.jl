@@ -38,11 +38,8 @@ function _verify_at(d, f, syms, zs, bs, points, rng, fair)
     for i in 1:(fair ? 20 : 12) * points
         fair && (signed = i > 2points)
         vs = Random.randperm(rng, 1400)[1:length(syms)] .+ 299
-        # exact n/997, so that a rational answer with large cancellations is exact, but
-        # floats for an answer with a ₂F₁: SymJ's N of ₂F₁(a, b; c; z) at an exact
-        # z > 1/2 is wrong when c - a - b is an integer, e.g. ₂F₁(1, 1/3; 4/3; 3/4)
+        # (exact, so that a rational answer with large cancellations is exact)
         ps = [s => Sym((signed && rand(rng, Bool) ? -v : v) // 997) for (s, v) in zip(syms, vs) if v != 997]
-        isempty(zs) || (ps = [s => Sym(Float64(v.num)) for (s, v) in ps])
         length(ps) == length(syms) || continue
         all(b -> _positive_at(b, ps), bs) || continue
         any(z -> _on_cut(z, ps), zs) && (signed = true; continue)
