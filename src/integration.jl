@@ -89,6 +89,10 @@ end
 const RUBI_LOAD_ORDER = filter!(l -> !isempty(l) && !startswith(l, '#'),
     readlines(joinpath(@__DIR__, "rubi_load_order.txt")))
 
+# a path relative to root with / as separator on every system: rule files are named
+# this way (HOST_RULES, the `files` filters), and relpath gives \ on Windows
+_relpath(p, root) = replace(relpath(p, root), '\\' => '/')
+
 """
     rule_files(dir = rules_dir()) -> Vector{String}
 
@@ -99,7 +103,7 @@ function rule_files(dir = rules_dir())
     root = joinpath(dir, "rules")
     bybase = Dict{String,String}()
     for (d, _, fs) in walkdir(root), f in fs
-        endswith(f, ".json") && f != "meta.json" && (bybase[f[1:end-5]] = relpath(joinpath(d, f), root))
+        endswith(f, ".json") && f != "meta.json" && (bybase[f[1:end-5]] = _relpath(joinpath(d, f), root))
     end
     out = String[]
     for n in RUBI_LOAD_ORDER

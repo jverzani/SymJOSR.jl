@@ -43,6 +43,8 @@ end
 @testset "integration" begin
     R = S.load_rules()
     @test length(R.rules) > 4000
+    # the host rules' keys are rule files' names (with /, on Windows too)
+    @test all(in(S.rule_files()), keys(S.HOST_RULES))
     for f in (x^2, (a + b * x)^3, 1 / (a + b * x), (a + b * x)^m, sqrt(a + b * x),
               1 / ((a + b * x) * (c + d * x)), x * (a + b * x)^5)
         @test isantiderivative(S.integrate(f, x; rules = R), f)

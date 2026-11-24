@@ -107,7 +107,7 @@ function test_problems(; files, rules::RuleSet = load_rules(), timeout::Real = 5
     counts = Dict(s => 0 for s in (:verified, :wrong, :unevaluated, :timeout, :error, :skipped))
     for (d, _, fs) in walkdir(root), f in sort(fs)
         endswith(f, ".json") || continue
-        rel = relpath(joinpath(d, f), root)
+        rel = _relpath(joinpath(d, f), root)
         any(s -> occursin(s, rel), files) || continue
         for t in JSON.parsefile(joinpath(d, f))["tests"]
             status, u, r = :skipped, nothing, nothing
