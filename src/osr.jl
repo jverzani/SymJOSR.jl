@@ -85,9 +85,11 @@ function ev(n::AbstractString, c::Ctx)
     v === nothing || return v
     v = get(ATOMS, n, nothing)
     v === nothing || return v
+    # reading a test problem: a bare name is a symbol, even one that is also a head (the
+    # coefficients A, B, C of a polynomial P(x))
+    c.free && return Sym(Symbol(n))
     f = get(FUNCS, n, nothing)          # a function name used as a value (MemberQ[{Sin,…}, F])
     f === nothing || return FuncName(n)
-    c.free && return Sym(Symbol(n))
     throw(OSRError("unbound name $n"))
 end
 function ev(n::AbstractVector, c::Ctx)
@@ -100,6 +102,8 @@ function ev(n::AbstractVector, c::Ctx)
     f === nothing || return f(vs...)
     hv = get(c.env, Symbol(h), nothing)  # a head slot's function, F[u]
     hv === nothing || return _applyhead(hv, vs)
+    # reading a test problem: an unknown head is an arbitrary function (8.10's f[x], g[x])
+    c.free && return apply_function(Symbol(h), Sym[_s(v) for v in vs])
     throw(OSRError("unsupported head $h"))
 end
 
