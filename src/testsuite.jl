@@ -25,29 +25,36 @@ function _verify(r::Sym, f::Sym; points = 3)
     syms = sort!(collect(SymJ.free_symbols(d) ∪ SymJ.free_symbols(f) ∪ Set([X])); by = string)
     zs = _hyp_args!(Sym[], r)
     bs = unique!(_frac_bases!(_frac_bases!(Sym[], r), f))
-    v = _verify_at(d, f, syms, zs, bs, points, Random.Xoshiro(hash(string(f))), true)
+    floats = _has_special(r) || _has_special(f)
+    v = _verify_at(d, f, syms, zs, bs, points, Random.Xoshiro(hash(string(f))), true, floats)
     v === nothing || return v
-    _verify_at(d, f, syms, zs, Sym[], points, Random.Xoshiro(hash(string(f))), false) === true
+    _verify_at(d, f, syms, zs, Sym[], points, Random.Xoshiro(hash(string(f))), false, floats) === true
 end
+
+# a function other than log: evaluated at floats (see _verify_at)
+_has_special(e::Sym) = (e.kind == SymJ.FN && e.name !== :log) ||
+    any(_has_special, e.args) || any(_has_special, e.exps)
 
 # true (agreement at `points` points), false (a disagreement), or nothing (too few
 # points). `fair`: values positive for the first tries, then of either sign; otherwise
 # positive until a point puts a ₂F₁ on its cut.
-function _verify_at(d, f, syms, zs, bs, points, rng, fair)
+function _verify_at(d, f, syms, zs, bs, points, rng, fair, floats)
     good, signed = 0, false
     for i in 1:(fair ? 20 : 12) * points
         fair && (signed = i > 2points)
         vs = Random.randperm(rng, 1400)[1:length(syms)] .+ 299
-        # exact, so that a rational answer with large cancellations is exact; but floats
-        # for an answer with a ₂F₁: SymJ evaluates ₂F₁ at exact arguments with BigFloat
-        # series, which took ~10 s an answer (and it is accurate at floats)
+        # exact for rational expressions and logs, so that large cancellations (rational
+        # answers with (b c - a d)^-8) are exact; floats otherwise: SymJ's N at exact
+        # arguments raises its BigFloat precision until the value is certain, which took
+        # ~10 s for a ₂F₁ and did not finish for incomplete gammas of complex arguments,
+        # or for sqrt(a + b asin(c x)) where c x > 1
         ps = [s => Sym((signed && rand(rng, Bool) ? -v : v) // 997) for (s, v) in zip(syms, vs) if v != 997]
-        isempty(zs) || (ps = [s => Sym(Float64(v.num)) for (s, v) in ps])
+        floats && (ps = [s => Sym(Float64(v.num)) for (s, v) in ps])
         length(ps) == length(syms) || continue
-        all(b -> _positive_at(b, ps), bs) || continue
-        any(z -> _on_cut(z, ps), zs) && (signed = true; continue)
-        dv = try N(subs(d, ps...)) catch; continue end
-        fv = try N(subs(f, ps...)) catch; continue end
+        all(b -> _positive_at(b, ps, floats), bs) || continue
+        any(z -> _on_cut(z, ps, floats), zs) && (signed = true; continue)
+        dv = try _num(subs(d, ps...), floats) catch; continue end
+        fv = try _num(subs(f, ps...), floats) catch; continue end
         dv isa Number && fv isa Number || return false
         isfinite(dv) && isfinite(fv) || continue
         abs(dv) <= 1e-8 * (1 + abs(fv)) || return false
@@ -78,16 +85,20 @@ function _frac_bases!(out, e::Sym)
     out
 end
 
+# the value of e: at floats, SymJ's plain complex evaluation; N would certify it (a tiny
+# imaginary part sent N to 512- and 2048-bit evaluations that did not finish)
+_num(e::Sym, floats::Bool) = floats ? SymJ._evalc(e) : N(e)
+
 # b at the point ps is a positive real number
-function _positive_at(b::Sym, ps)
-    v = try N(subs(b, ps...)) catch; return false end
+function _positive_at(b::Sym, ps, floats = false)
+    v = try _num(subs(b, ps...), floats) catch; return false end
     v isa Number && isfinite(v) || return false
     abs(imag(v)) <= 1e-12 * (1 + abs(v)) && real(v) > 0
 end
 
 # z at the point ps is on ₂F₁'s branch cut, [1, ∞), or can't be evaluated
-function _on_cut(z::Sym, ps)
-    v = try N(subs(z, ps...)) catch; return true end
+function _on_cut(z::Sym, ps, floats = false)
+    v = try _num(subs(z, ps...), floats) catch; return true end
     v isa Number || return true
     abs(imag(v)) <= 1e-12 * (1 + abs(v)) && real(v) >= 1 - 1e-12
 end

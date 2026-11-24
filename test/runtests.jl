@@ -61,6 +61,13 @@ end
     @test !F["IntBinomialQ"](a, b, c, d, Sym(3), Sym(1 // 5), Sym(1 // 7), X)
     @test F["PolynomialQuotient"](1 - X^4, 1 + X + X^2 + X^3, X) == 1 - X
     @test F["PolynomialRemainder"](X^2 + 1, X + 1, X) == 2
+    # trig: functions as values, and the forms RUBI's trig rules know
+    @test F["TrigQ"](sin) && !F["TrigQ"](sinh) && F["HyperbolicQ"](cosh)
+    @test F["InverseFunctionFreeQ"](log(a) * X, X) && !F["InverseFunctionFreeQ"](log(X) * X, X)
+    @test F["KnownSineIntegrandQ"]((a + b * sin(c + d * X))^m, X)
+    @test F["KnownSineIntegrandQ"](a + b * cos(X) + c * cos(X)^2, X)
+    @test !F["KnownSineIntegrandQ"](X * sin(X), X) && !F["KnownSineIntegrandQ"](tan(X), X)
+    @test F["KnownTangentIntegrandQ"](tan(X)^3, X)
     # P(x) (c + d x)^n as powers of c + d x (RUBI's ExpandLinearProduct)
     e = F["ExpandIntegrand"](X^3 * sqrt(a + b * X), X)
     @test e.kind == SymJ.ADD && iszero(simplify(e - X^3 * sqrt(a + b * X)))

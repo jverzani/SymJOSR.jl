@@ -147,3 +147,64 @@ function _divrem(u, v, x)
 end
 FUNCS["PolynomialQuotient"] = (u, v, x) -> _divrem(u, v, x)[1]
 FUNCS["PolynomialRemainder"] = (u, v, x) -> _divrem(u, v, x)[2]
+
+# ---- functions as values: TrigQ[F], HyperbolicQ[F] (F a head slot's binding)
+
+# the name of a function given as a value: a head slot binds a Julia function (sin) or a
+# SymFunction; a name in a rule is a FuncName; an application, its head
+_fname(f::Function) = nameof(f)
+_fname(f::SymJ.SymFunction) = f.name
+_fname(f::FuncName) = get(FUNCTION_NAMES, f.name, Symbol(f.name))
+_fname(f::Sym) = f.kind == SymJ.FN ? f.name : nothing
+_fname(f) = nothing
+
+const _TRIG = (:sin, :cos, :tan, :cot, :sec, :csc)
+const _HYPERBOLIC = (:sinh, :cosh, :tanh, :coth, :sech, :csch)
+FUNCS["TrigQ"] = u -> _fname(u) in _TRIG
+FUNCS["HyperbolicQ"] = u -> _fname(u) in _HYPERBOLIC
+
+FUNCS["IndependentQ"] = (u, x) -> FUNCS["FreeQ"](u, x)
+
+# InverseFunctionFreeQ[u, x]: x is not inside an inverse function (log, inverse trig and
+# hyperbolic functions, polylog) or a ₂F₁
+const _INVERSE = (:log, :asin, :acos, :atan, :acot, :asec, :acsc, :asinh, :acosh, :atanh,
+    :acoth, :asech, :acsch, :li, :_₂F₁, :AppellF1)
+function _inverse_function_free(u, x)
+    u isa Sym || return true
+    u.kind == SymJ.FN && u.name in _INVERSE && return !has(u, x)
+    all(a -> _inverse_function_free(a, x), u.args) && all(a -> _inverse_function_free(a, x), u.exps)
+end
+FUNCS["InverseFunctionFreeQ"] = (u, x) -> _inverse_function_free(_s(u), _s(x))
+
+# ---- KnownTrigIntegrandQ[list, u, x]: u is one of the forms of trig integrand RUBI
+# integrates, (a + b F[e + f x])^m (A + B F[e + f x] + C F[e + f x]^2) and its special
+# cases, with F in list (the MatchQ patterns of IntegrationUtilityFunctions.m)
+
+const _KTI = Ref{Any}(nothing)
+function _known_trig_patterns()
+    _KTI[] === nothing || return _KTI[]
+    arg = Any["Add", "e.", Any["Multiply", "f.", "x_"]]
+    F = Any["func_", arg]
+    base = Any["Power", Any["Add", "a.", Any["Multiply", "b.", F]], "m."]
+    quad2 = Any["Add", "A.", Any["Multiply", "C.", Any["Power", F, 2]]]
+    quad3 = Any["Add", "A.", Any["Multiply", "B.", F], Any["Multiply", "C.", Any["Power", F, 2]]]
+    lin = Any["Add", "A.", Any["Multiply", "B.", F]]
+    forms = Any[base, Any["Multiply", base, lin], quad2, quad3, Any["Multiply", base, quad2], Any["Multiply", base, quad3]]
+    _KTI[] = [SymJ.pattern(pat(p)) for p in forms]
+end
+
+function _known_trig_integrand(list, u, x)
+    u = _s(u)
+    isone(u) && return true
+    names = Set(_fname(f) for f in list)
+    for p in _known_trig_patterns(), m in eachmatch(p, u)
+        _fname(m[:func]) in names || continue
+        all(k -> k === :func || !has(_s(m[k]), _s(x)), keys(m)) && return true
+    end
+    false
+end
+FUNCS["KnownTrigIntegrandQ"] = (list, u, x) -> _known_trig_integrand(list, u, x)
+FUNCS["KnownSineIntegrandQ"] = (u, x) -> _known_trig_integrand((sin, cos), u, x)
+FUNCS["KnownSecantIntegrandQ"] = (u, x) -> _known_trig_integrand((sec, csc), u, x)
+FUNCS["KnownTangentIntegrandQ"] = (u, x) -> _known_trig_integrand((tan,), u, x)
+FUNCS["KnownCotangentIntegrandQ"] = (u, x) -> _known_trig_integrand((cot,), u, x)
