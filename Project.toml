@@ -18,6 +18,7 @@ Tar = "a4e569a6-e804-4fa4-b0f3-eef7a1d5b13e"
 SymJ = {rev = "main", url = "https://github.com/jverzani/SymJ.jl"}
 
 [compat]
+CodecZlib = "0.7.9"
 JSON = "1.13.4"
 QuadGK = "2.11.3"
 Random = "1.11.0"
