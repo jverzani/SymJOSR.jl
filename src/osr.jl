@@ -152,7 +152,12 @@ end
 function pat(n::AbstractVector)
     isapp(n) || throw(OSRError("pattern: a list"))
     h, as = head(n), [pat(a) for a in args(n)]
-    h == "Multiply" && return Expr(:call, :*, as...)
+    # an optional factor, b. in b.*x, has the default 1, and the term is not optional: in
+    # Mathematica a_ + b_.*x_ needs a term in x. SymJ lets the term ~!b*x of a sum be
+    # absent with b = 0, so b is required to be nonzero. (Without it, (a + b x)(c + d)/e
+    # matched (a + b x)^m (c + d x)^n (e + f x)^p with b = d = 0, and 1.1.1.3 #1 rewrote
+    # the integrand to itself.)
+    h == "Multiply" && return Expr(:call, :*, (_nonzero_factor(a, x) for (a, x) in zip(args(n), as))...)
     h == "Add" && return Expr(:call, :+, as...)
     h == "Power" && return Expr(:call, :^, as...)
     h == "Rational" && return Expr(:call, ://, as...)
@@ -165,7 +170,14 @@ function pat(n::AbstractVector)
     Expr(:call, f, as...)
 end
 
-_typepred(t) = t == "integer" ? _isexactint : t == "rational" ? _isexactrat :
+function _nonzero_factor(n, p)
+    w = n isa AbstractString ? wildcard(n) : nothing
+    (w === nothing || w[2] !== :optional || w[1] === :x) && return p
+    :(~(!$(Expr(:(::), w[1], _isnonzero))))           # ~!b::f is ~(!(b::f))
+end
+_isnonzero(v) = !(v isa Sym && iszero(v))
+
+_typepred(t) =t == "integer" ? _isexactint : t == "rational" ? _isexactrat :
     t == "symbol" ? (v -> v isa Sym && v.kind == SymJ.SYMBOL) :
     throw(OSRError("pattern: unknown wildcard type $t"))
 

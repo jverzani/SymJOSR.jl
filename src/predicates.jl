@@ -25,8 +25,15 @@ function _numval(u)
     end
     v isa Number ? v : nothing
 end
+# (as RUBI's GtQ, N[Together[u]]: with symbols, over a common denominator first, so
+# b/(b c' - a d') with c' = b c/(b c - a d), d' = b d/(b c - a d) is 1. Without it,
+# 1.1.1.2 #32 never hands over to #31 and rewrites its own result until the timeout.)
 function _realval(u)
     v = _numval(u)
+    if v === nothing && u isa Sym && !isempty(free_symbols(u))
+        w = try cancel(u) catch err; err isa InterruptException && rethrow(); return nothing end
+        v = isempty(free_symbols(w)) ? _numval(w) : nothing
+    end
     v === nothing && return nothing
     v isa Real && return v
     abs(imag(v)) <= 1e-12 * max(1, abs(real(v))) ? real(v) : nothing
@@ -209,6 +216,22 @@ end
 
 FUNCS["PolyQ"] = function (u, x, n = nothing)
     x isa AbstractVector && return false
+    x = _s(x)
+    # PolyQ[u, x^n]: as RUBI, a polynomial in x itself, with only powers of x^n (n a
+    # positive integer), or for other v, coefficients in x^v free of x. (Not "free of
+    # the subterm x^n": (1 + a x)/(1 - a x) was a polynomial of degree 0 in x^2, and
+    # 1.1.3.7 #12 expanded it again and again.)
+    if x.kind == SymJ.POW && x.args[1].kind == SymJ.SYMBOL && n === nothing
+        b, v = x.args
+        if _isinteger(v) && _rat(v) > 0
+            cs = _coeffs(u, b)
+            (cs === nothing || any(c -> has(c, b), cs)) && return false
+            k = Int(_rat(v))
+            return all(i -> i % k == 0 || iszero(cs[i+1]), 0:length(cs)-1)
+        end
+        cs = _coeffs(u, x)
+        return cs !== nothing && !any(c -> has(c, b), cs)
+    end
     cs = _coeffs(u, x)
     cs === nothing && return false
     any(c -> has(c, _s(x)), cs) && return false
