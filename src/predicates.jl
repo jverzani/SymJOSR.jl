@@ -216,6 +216,22 @@ end
 
 FUNCS["PolyQ"] = function (u, x, n = nothing)
     x isa AbstractVector && return false
+    x = _s(x)
+    # PolyQ[u, x^n]: as RUBI, a polynomial in x itself, with only powers of x^n (n a
+    # positive integer), or for other v, coefficients in x^v free of x. (Not "free of
+    # the subterm x^n": (1 + a x)/(1 - a x) was a polynomial of degree 0 in x^2, and
+    # 1.1.3.7 #12 expanded it again and again.)
+    if x.kind == SymJ.POW && x.args[1].kind == SymJ.SYMBOL && n === nothing
+        b, v = x.args
+        if _isinteger(v) && _rat(v) > 0
+            cs = _coeffs(u, b)
+            (cs === nothing || any(c -> has(c, b), cs)) && return false
+            k = Int(_rat(v))
+            return all(i -> i % k == 0 || iszero(cs[i+1]), 0:length(cs)-1)
+        end
+        cs = _coeffs(u, x)
+        return cs !== nothing && !any(c -> has(c, b), cs)
+    end
     cs = _coeffs(u, x)
     cs === nothing && return false
     any(c -> has(c, _s(x)), cs) && return false

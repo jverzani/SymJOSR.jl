@@ -171,6 +171,13 @@ _inert_int(u) = apply_function(:Int, Sym[u, X])
 struct TimedOut <: Exception end
 const _DEADLINE = Ref(Inf)
 
+# The integrands being integrated, outermost first. A step that comes back to one of
+# them made no progress (RUBI's rules never do that, but approximations such as our
+# ExpandIntegrand can hand an integrand back unchanged), so it fails with Cycle, and the
+# rule whose result needed it is rejected: the next rule is tried.
+struct Cycle <: Exception end
+const _STACK = Sym[]
+
 function _int(u::Sym, depth::Int)
     depth > MAXDEPTH[] && throw(GiveUp(u))
     time() > _DEADLINE[] && throw(TimedOut())
@@ -181,9 +188,11 @@ function _int(u::Sym, depth::Int)
         c = FUNCS["FreeFactors"](u, X)
         isone(c) || return c * _int(FUNCS["NonfreeFactors"](u, X), depth)
     end
+    any(v -> isequal(v, u), _STACK) && throw(Cycle())
     R = _RULESET[]::RuleSet
     old = _DEPTH[]
     _DEPTH[] = depth
+    push!(_STACK, u)
     try
         for r in R.rules
             v = r.rule(u)
@@ -191,6 +200,7 @@ function _int(u::Sym, depth::Int)
         end
     finally
         _DEPTH[] = old
+        pop!(_STACK)
     end
     _inert_int(u)
 end
@@ -210,7 +220,7 @@ function integrate(f, x::Sym; rules::RuleSet = load_rules(), trace::Bool = false
     v = try
         _int(g, 0)
     catch err
-        err isa GiveUp || rethrow()
+        err isa GiveUp || err isa Cycle || rethrow()
         nothing
     finally
         _RULESET[], _TRACE[] = oldR, oldT

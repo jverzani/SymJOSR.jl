@@ -16,8 +16,10 @@ of priority. Read README.md first for how the package works.
   | session 1    | 1,132 | 402 | 276 | 161 |
   | session 2, loops fixed | 1,319 | 361 | 269 |  22 |
   | session 2, GtQ fixed   | 1,598 | 361 |   1 |  11 |
+  | session 2, cycles      | 1,635 | 325 |   0 |  11 |
 
-  A full run now takes about 2 minutes (was 45). The deadline is only checked on
+  A full run now takes under a minute (was 45). 1.1.3.8 (594 problems): 306
+  verified, 285 unevaluated, 0 timeouts, 3 wrong, in 29 s. The deadline is only checked on
   entry to `_int`, so a timed-out problem can run well past its limit.
 - `test/runtests.jl` passes (30 tests).
 - Item 1 is no longer pressing: the time went to timeouts, now gone. (Profiling 120
@@ -127,6 +129,19 @@ RUBI's rule before it (#31, the ₂F₁ closed form) takes over once
 `GtQ[b/(b*c' - a*d'), 0]` holds for the new c', d', which needs RUBI's
 `N[Together[u]]` to see that the quotient is 1. `_realval` (order predicates, Max,
 Min) now cancels an expression with symbols before giving up on it.
+
+**Cycles.** The last one, #1111, was `PolyQ[u, x^n]` true for any u without the
+subterm x^n ((1 + a x)/(1 - a x) "a polynomial of degree 0 in x^2"), so 1.1.3.7 #12
+expanded it again and again; `PolyQ` now follows RUBI. Fixing it exposed loops through
+1.1.3.7 #10, `Int[ExpandIntegrand[Pq/(a + b x^n)]]`: RUBI's ExpandIntegrand splits
+that over the n-th roots of a/b, ours (expand + apart) hands it back unchanged. `_int`
+now keeps the integrands being integrated on a stack (`_STACK`); a step that comes back
+to one of them fails with `Cycle` and its rule is rejected, so the next rule is tried.
+That also turned 37 unevaluated problems of 1.1.1.2 into answers.
+
+Lost to the PolyQ fix (1.1.3.8 #181, `(1 - x^4)/(1 + x + x^2 + x^3)`, and #585): they
+went through #12 only because of the wrong PolyQ. RUBI's rule for #181
+(`PolynomialQuotient`, 1.4.1) is in a file empty in OSR, and the head is unsupported.
 
 ## 4. The unsupported heads
 

@@ -29,6 +29,10 @@ end
     @test F["PosQ"](Sym(2)) && !F["PosQ"](-a) && F["NegQ"](-Sym(3))
     @test F["LinearQ"](a + b * X, X) && !F["LinearQ"](X^2, X)
     @test F["PolyQ"](X^3 + a, X, Sym(3))
+    # PolyQ[u, x^n]: a polynomial in x with only powers of x^n, as RUBI
+    @test F["PolyQ"](3 + a * X^4, X^2) && !F["PolyQ"](3 + X^3, X^2)
+    @test !F["PolyQ"]((1 + a * X) / (1 - a * X), X^2)
+    @test F["PolyQ"](1 + X^m, X^m) && !F["PolyQ"](1 + X^m + X, X^m)
     @test F["SumSimplerQ"](Sym(-2), Sym(1)) == (-2 < -1)
     # as RUBI's N[Together[u]]: b/(b c' - a d') is 1 for the c', d' of 1.1.1.2 #32
     cc, dd = b * c / (b * c - a * d), b * d / (b * c - a * d)
@@ -43,6 +47,10 @@ end
               1 / ((a + b * x) * (c + d * x)), x * (a + b * x)^5)
         @test isantiderivative(S.integrate(f, x; rules = R), f)
     end
+    # reached a cycle at MAXDEPTH: a step that hands an integrand back is now rejected,
+    # and another rule applies (1.1.1.2 #399)
+    f = x^2 / (a + b * x)^(1 // 3)
+    @test isantiderivative(S.integrate(f, x; rules = R), f)
     # looped through 1.1.1.2 #32 until the timeout (1.1.1.2 #1514)
     f = (a + b * x)^(7 // 2) * sqrt(c + d * x)
     @test isantiderivative(S.integrate(f, x; rules = R), f)

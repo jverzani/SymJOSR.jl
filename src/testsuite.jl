@@ -135,7 +135,7 @@ function _run_problem(expr, rules, timeout)
     catch err
         err isa InterruptException && rethrow()
         err isa TimedOut && return (:timeout, u, nothing)
-        err isa GiveUp ? nothing : return (:error, u, sprint(showerror, err)[1:min(end, 200)])
+        err isa GiveUp || err isa Cycle ? nothing : return (:error, u, sprint(showerror, err)[1:min(end, 200)])
     finally
         _RULESET[], _TRACE[], _DEADLINE[] = oldR, oldT, oldD
     end
