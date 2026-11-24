@@ -1,0 +1,3 @@
+# Identifiers and mathematical notation, not misspellings
+[default.extend-words]
+typ = "typ"            # a wildcard's type (a_integer)
