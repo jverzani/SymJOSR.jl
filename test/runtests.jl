@@ -40,6 +40,30 @@ end
     # as RUBI's N[Together[u]]: b/(b c' - a d') is 1 for the c', d' of 1.1.1.2 #32
     cc, dd = b * c / (b * c - a * d), b * d / (b * c - a * d)
     @test F["GtQ"](b / (b * cc - a * dd), Sym(0))
+    # EqQ of rational expressions over a common denominator
+    @test F["EqQ"]((a^2 - b^2) / (a - b), a + b) && !F["EqQ"](b * c - a * d, 0)
+end
+
+@testset "structural predicates" begin
+    F = S.FUNCS
+    X = S.X
+    @test F["LinearMatchQ"](a + b * X, X) && F["LinearMatchQ"](X, X) && !F["LinearMatchQ"](a, X)
+    @test !F["LinearMatchQ"](c * (a + b * X), X)          # syntactic, as RUBI's MatchQ
+    @test F["LinearMatchQ"](Any[a + X, 2X], X)
+    @test F["QuadraticMatchQ"](a + c * X^2, X) && !F["QuadraticMatchQ"](a + b * X, X)
+    @test F["BinomialMatchQ"](a + b * X^m, X) && !F["BinomialMatchQ"](a + b * X + c * X^2, X)
+    @test F["BinomialQ"](a + b / X^2, X) && F["BinomialQ"](a + b * X^3, X, Sym(3)) && !F["BinomialQ"](X^2 + X, X)
+    @test !F["BinomialQ"]((X + 1) * (X^2 + 2), X)      # (a product without a constant factor)
+    @test F["RationalFunctionQ"]((X + 1) / (X^2 + a), X) && !F["RationalFunctionQ"](sqrt(X), X)
+    @test F["LinearPairQ"](2X + 2, X + 1, X)
+    @test F["IntBinomialQ"](a, b, c, Sym(3), Sym(1 // 2), Sym(2), X)
+    @test F["IntBinomialQ"](a, b, c, d, Sym(3), Sym(-1 // 3), Sym(1), X)
+    @test !F["IntBinomialQ"](a, b, c, d, Sym(3), Sym(1 // 5), Sym(1 // 7), X)
+    @test F["PolynomialQuotient"](1 - X^4, 1 + X + X^2 + X^3, X) == 1 - X
+    @test F["PolynomialRemainder"](X^2 + 1, X + 1, X) == 2
+    # P(x) (c + d x)^n as powers of c + d x (RUBI's ExpandLinearProduct)
+    e = F["ExpandIntegrand"](X^3 * sqrt(a + b * X), X)
+    @test e.kind == SymJ.ADD && iszero(simplify(e - X^3 * sqrt(a + b * X)))
 end
 
 # the rules come from SYMJOSR_INTEGRATION_DIR or a download

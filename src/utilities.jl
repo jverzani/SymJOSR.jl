@@ -47,11 +47,35 @@ function _simplify_integrand(u)
     leafcount(v) <= leafcount(u) ? v : u
 end
 
+# P(x) (c + d x)^n, P a polynomial and n not a nonnegative integer, as a sum of powers
+# of c + d x: P(x) = Σ p_k (c + d x)^k, so the terms are p_k (c + d x)^(n + k). RUBI's
+# ExpandLinearProduct, the case its rules expect from Int[ExpandIntegrand[(a + b x)^m
+# (c + d x)^n, x], x] with m a positive integer (1.1.1.2 #12): expand + apart leaves
+# x^3 sqrt(a + b x) as it is. Nothing when u is not of this form.
+function _expand_linear_product(u::Sym)
+    u.kind == SymJ.MUL || return nothing
+    fs = _factors(u)
+    i = findfirst(f -> f.kind == SymJ.POW && FUNCS["LinearQ"](f.args[1], X) && _free(f.args[2], X) &&
+                       !(_isinteger(f.args[2]) && _rat(f.args[2]) >= 0), fs)
+    i === nothing && return nothing
+    w, n = fs[i].args
+    P = prod(fs[j] for j in eachindex(fs) if j != i; init = SymJ.ONE)
+    (_free(P, X) || !FUNCS["PolyQ"](P, X)) && return nothing
+    c, d = FUNCS["Coefficient"](w, X, Sym(0)), FUNCS["Coefficient"](w, X, Sym(1))
+    iszero(c) && return nothing          # (d x)^n P(x): plain expansion does it
+    y = Sym(:𝓎)
+    ps = _coeffs(subs(expand(P), X => (y - c) / d), y)
+    (ps === nothing || any(p -> has(p, y) || has(p, X), ps)) && return nothing
+    sum((ps[k+1] * w^(n + k) for k in 0:length(ps)-1 if !iszero(ps[k+1])); init = SymJ.ZERO)
+end
+
 # ExpandIntegrand[u, x], ExpandIntegrand[u, v, x]: a sum of simpler terms. RUBI's has
 # many special cases; this expands, and splits a rational function of x into partial
 # fractions (approximate: other forms of the terms than RUBI's).
 FUNCS["ExpandIntegrand"] = function (as...)
     u = length(as) == 3 ? _s(as[1]) * _s(as[2]) : _s(as[1])
+    v = _expand_linear_product(u)
+    v === nothing || return v
     e = expand(u)
     _is_rational_in_x(e) || return e
     try
