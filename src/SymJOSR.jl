@@ -28,7 +28,10 @@ include("predicates.jl")
 include("utilities.jl")
 include("sums.jl")
 include("structure.jl")
+include("specialfunctions.jl")
 include("integration.jl")
 include("testsuite.jl")
+
+__init__() = _register_functions()
 
 end

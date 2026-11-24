@@ -87,6 +87,21 @@ end
     @test !isempty(r.steps)
 end
 
+@testset "special functions" begin
+    A(n, as...) = SymJ.apply_function(n, Sym[Sym.(as)...])
+    # RUBI's PolyLog is SymJ's li (log(t)/(t + 1), Apostol #156, has a Li₂ answer)
+    @test S.FUNCTION_NAMES["PolyLog"] === :li
+    F = S.integrate(log(x) / (x + 1), x)
+    @test F !== nothing && S._verify(subs(F, x => S.X), log(S.X) / (S.X + 1))
+    # registered here: values and derivatives
+    @test abs(N(A(:EllipticF, SymJ.PI / 2, 1 // 2)) - 1.8540746773013719) < 1e-10
+    @test abs(N(A(:EllipticE, 1 // 2)) - 1.3506438810476755) < 1e-10
+    @test abs(N(A(:sinhint, 1)) - 1.0572508753757286) < 1e-10
+    @test abs(N(A(:logint, 2)) - 1.045163780117493) < 1e-10
+    @test iszero(simplify(diff(A(:EllipticE, x, a), x) - sqrt(1 - a * sin(x)^2)))
+    @test iszero(simplify(diff(A(:coshint, x), x) - cosh(x) / x))
+end
+
 @testset "verify" begin
     X = S.X
     # singular at x = 1, which the points avoid

@@ -191,6 +191,13 @@ kept apart (rules in 4.7.5 "Inert trig functions" convert between them).
 - Julia 1.12: the CI job runs far longer than the others (SymJ needed inference
   barriers and no coverage on 1.12; we have the latter). See the session 2 notes on CI.
 
+- `N` of ₂F₁ at exact arguments is now right but slow (BigFloat series, ~10 s for some
+  answers in `_verify`), so `_verify` evaluates answers with a ₂F₁ at floats.
+- RUBI's PolyLog is SymJ's `li` (it was mapped to an unknown `polylog`); SymJ has no
+  incomplete elliptic integrals, log integral, or (outside its RischIntegrate extension)
+  Shi/Chi: src/specialfunctions.jl registers them. With them, 1.1.1.2's 32 "wrong"
+  (elliptic) answers verify: 1,667 verified, 0 wrong.
+
 ## Upstream (OpenSymbolicRules/Integration), reported 2026-11-23
 
 - 31 rule files that RUBI loads are empty in OSR (~1,100 rules: all of 1.1.2, most of

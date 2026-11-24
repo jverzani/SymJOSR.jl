@@ -38,8 +38,11 @@ function _verify_at(d, f, syms, zs, bs, points, rng, fair)
     for i in 1:(fair ? 20 : 12) * points
         fair && (signed = i > 2points)
         vs = Random.randperm(rng, 1400)[1:length(syms)] .+ 299
-        # (exact, so that a rational answer with large cancellations is exact)
+        # exact, so that a rational answer with large cancellations is exact; but floats
+        # for an answer with a ₂F₁: SymJ evaluates ₂F₁ at exact arguments with BigFloat
+        # series, which took ~10 s an answer (and it is accurate at floats)
         ps = [s => Sym((signed && rand(rng, Bool) ? -v : v) // 997) for (s, v) in zip(syms, vs) if v != 997]
+        isempty(zs) || (ps = [s => Sym(Float64(v.num)) for (s, v) in ps])
         length(ps) == length(syms) || continue
         all(b -> _positive_at(b, ps), bs) || continue
         any(z -> _on_cut(z, ps), zs) && (signed = true; continue)
@@ -125,6 +128,13 @@ function _run_problem(expr, rules, timeout)
     catch
         return (:error, nothing, nothing)
     end
+    _check(u, rules, timeout)
+end
+
+# integrate u (in the integration variable X) with the rules, within timeout seconds, and
+# check the answer: (status, u, result), status one of :verified, :wrong, :unevaluated,
+# :timeout, :error
+function _check(u::Sym, rules, timeout)
     oldR, oldT, oldD = _RULESET[], _TRACE[], _DEADLINE[]
     _RULESET[], _TRACE[], _DEADLINE[] = rules, nothing, time() + timeout
     r = try
