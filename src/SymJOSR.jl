@@ -27,6 +27,7 @@ include("heads.jl")
 include("predicates.jl")
 include("utilities.jl")
 include("sums.jl")
+include("structure.jl")
 include("integration.jl")
 include("testsuite.jl")
 

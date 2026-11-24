@@ -39,13 +39,31 @@ function _realval(u)
     abs(imag(v)) <= 1e-12 * max(1, abs(real(v))) ? real(v) : nothing
 end
 
-# u == v as expressions: canonical forms first, simplify when that is not decisive
+# u == v as expressions: canonical forms first; a rational expression in its symbols
+# (+, *, integer powers) over a common denominator, which decides it; simplify
+# otherwise. (simplify on the large polynomial differences of 1.1.3.x guards took
+# seconds a call.)
 function _eq(u, v)
     d = _s(u) - _s(v)
     iszero(d) && return true
     _isnum(d) && return false
-    has(d, X) || isempty(free_symbols(d)) || return iszero(simplify(d))
+    if _is_ratexpr(d)
+        w = try cancel(d) catch err; err isa InterruptException && rethrow(); nothing end
+        w === nothing || return iszero(w)
+    end
     iszero(simplify(d))
+end
+
+# built from symbols and exact numbers with +, * and integer powers
+function _is_ratexpr(u::Sym)
+    k = u.kind
+    k == SymJ.SYMBOL && return true
+    k == SymJ.NUMBER && return SymJ.isexact(u.num)
+    k == SymJ.POW && return _isinteger(u.args[2]) && _is_ratexpr(u.args[1])
+    (k == SymJ.ADD || k == SymJ.MUL) || return false
+    SymJ.isexact(u.num) || return false
+    all(_isinteger, u.exps) || return false
+    all(_is_ratexpr, u.args)
 end
 
 _all(f, u::AbstractVector) = all(f, u)

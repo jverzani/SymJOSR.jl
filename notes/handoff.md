@@ -145,10 +145,21 @@ went through #12 only because of the wrong PolyQ. RUBI's rule for #181
 
 ## 4. The unsupported heads
 
-`unsupported_heads(R)`, top of the list: `BinomialQ` 50, `LinearMatchQ` 45,
-`IntBinomialQ` 39, `BinomialMatchQ` 37, `InverseFunctionFreeQ` 30,
-`KnownSineIntegrandQ`/`KnownSecantIntegrandQ` 22 each, `MatchQ` 21, `Condition` 19,
-`PolynomialQuotient` 18, `FunctionOfExponentialQ` 16, `SubstFor` 14, ...
+Session 2 added (src/structure.jl) `LinearMatchQ`, `QuadraticMatchQ`,
+`BinomialMatchQ`, `BinomialQ`/`BinomialParts`, `LinearPairQ`, `RationalFunctionQ`,
+`PolynomialQuotient`/`PolynomialRemainder`, and the rule files' own `IntLinearQ`,
+`IntBinomialQ` (7, 8 and 10 arguments) and `IntQuadraticQ`: 4,988 -> 5,167 rules.
+`BinomialParts` leaves out RUBI's product-of-two-binomials case (approximation).
+
+Effect: 1.1.3.8 verified 306 -> 330. 1.1.1.2 verified the same, 1,635, but not the
+same problems: +65, and -44 that the newly loaded 1.1.1.2 #19/#25 now send to
+`(a + b x + c x^2)^p` forms whose RUBI rules (1.2.1.1 #17, #18: `With[...]`) OSR
+does not have yet (OSR known issue: rules with `With`); -23 more are elliptic
+answers the check can't judge. Expect those back when OSR converts `With` rules.
+
+Remaining top of `unsupported_heads(R)`: `InverseFunctionFreeQ` 30, `MatchQ` 22,
+`KnownSineIntegrandQ`/`KnownSecantIntegrandQ` 22 each, `Condition` 20,
+`FunctionOfExponentialQ` 16, `SubstFor` 14, `FunctionOfQ` 13, `IndependentQ` 12, ...
 
 Definitions are in RUBI's `IntegrationUtilityFunctions.m` (clone
 `https://github.com/RuleBasedIntegration/Rubi`). Adding one is one entry, e.g.
