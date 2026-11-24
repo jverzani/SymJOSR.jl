@@ -1,4 +1,7 @@
-using Test, SymJ, SymJOSR
+# SymJ before Test: on Julia 1.12, with Test loaded first, compiling SymJ code (as
+# building a pattern) runs for many minutes; in this order it takes seconds
+using SymJ, SymJOSR
+using Test
 
 const S = SymJOSR
 @syms x a b c d m
