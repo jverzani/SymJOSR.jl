@@ -158,13 +158,20 @@ end
     @test isantiderivative(S.integrate(f, x; rules = R), f)
     r = S.integrate((a + b * x)^3, x; rules = R, trace = true)
     @test !isempty(r.steps)
+    # x^m (c x)^n: SymJ writes (c x)^(-7/2) as c^-3 x^-3 (c x)^(-1/2), so RUBI's 1.4.1 rule
+    # for it came back to the same integrand (4.1.0 #192)
+    for f in (1 / (sqrt(c * x) * x^3), x^2 * (c * x)^(1 // 3), sqrt(c * x) / x^(3 // 2))
+        @test isantiderivative(S.integrate(f, x; rules = R), f)
+    end
 end
 
 @testset "trig and hyperbolic" begin
     R = S.load_rules()
     # cos as sin(+ π/2), hyperbolic functions as trig of imaginary arguments (RUBI's
     # DeactivateTrig, 4.1.0.1 #1, which OSR does not have)
-    for f in (cos(x), x * cos(x), sec(x)^2, cot(x), sinh(x), cosh(x)^2, x * sinh(x), 1 / cosh(x), tanh(x))
+    for f in (cos(x), x * cos(x), sec(x)^2, cot(x), sinh(x), cosh(x)^2, x * sinh(x), 1 / cosh(x), tanh(x),
+              # ActivateTrig in a part of 4.3.7 #15's result shifted cot back (4.4.0 #25)
+              sqrt(a * cot(x)^2) * cot(x)^2)
         @test isantiderivative(S.integrate(f, x; rules = R), f)
     end
     @test S.integrate(x * sinh(x), x; rules = R) == x * cosh(x) - sinh(x)    # back in hyperbolic form
