@@ -107,6 +107,23 @@ end
     @test isantiderivative(S.integrate(f, x; rules = R), f)
 end
 
+@testset "exponentials" begin
+    R = S.load_rules()
+    X = S.X
+    # by parts (2.1, guarded by !TrueQ[$UseGamma]), not the incomplete gamma
+    @test S.integrate(x * exp(x), x; rules = R) == x * exp(x) - exp(x)
+    # e^x sinh(x): exponentials that cancel (ExpandTrigToExp)
+    @test isantiderivative(S.integrate(exp(x) * sinh(x), x; rules = R), exp(x) * sinh(x))
+    # the substitution v = e^(d x) (RUBI 2.3's last rule, which OSR does not have)
+    @test S.integrate(1 / (exp(x) + 1), x; rules = R) == x - log(exp(x) + 1)
+    for f in (1 / (a + b * exp(c + d * x)), 1 / (exp(x) + exp(-x)), 1 / (a + b * exp(x))^2)
+        @test isantiderivative(S.integrate(f, x; rules = R), f)
+    end
+    F = S.FUNCS
+    @test F["FunctionOfExponentialQ"](1 / (a + b * exp(X)), X) && !F["FunctionOfExponentialQ"](X * exp(X), X)
+    @test !F["FunctionOfExponentialQ"](2^X + exp(X), X)
+end
+
 @testset "special functions" begin
     A(n, as...) = SymJ.apply_function(n, Sym[Sym.(as)...])
     # RUBI's PolyLog is SymJ's li (log(t)/(t + 1), Apostol #156, has a Li₂ answer)

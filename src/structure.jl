@@ -432,3 +432,142 @@ function _mma_trig(u)
 end
 _has_trig_fn(u) = u isa Sym && ((u.kind == SymJ.FN && haskey(_RECIP, u.name)) || any(_has_trig_fn, u.args) || any(_has_trig_fn, u.exps))
 FUNCS["HasTrigQ"] = u -> _has_trig_fn(_s(u))
+
+# TrigToExp[u]: trig and hyperbolic functions as exponentials; ExpandTrigToExp[u, v, x]:
+# u times that of v, expanded (RUBI uses it where F^(c (a + b x)) sinh(d + e x)^n has
+# e^2 = b^2 c^2 log(F)^2, so that exponentials cancel: e^x sinh(x) = (e^(2x) - 1)/2)
+const _EULER = SymJ.E
+function _trig_to_exp(u)
+    u isa Sym || return u
+    isempty(u.args) && return u
+    if u.kind == SymJ.FN && length(u.args) == 1
+        z = _trig_to_exp(u.args[1])
+        ep, em = _EULER^z, _EULER^(-z)
+        I = Sym(im); jp, jm = _EULER^(I * z), _EULER^(-I * z)
+        n = u.name
+        n === :sinh && return (ep - em) / 2
+        n === :cosh && return (ep + em) / 2
+        n === :tanh && return (ep - em) / (ep + em)
+        n === :coth && return (ep + em) / (ep - em)
+        n === :sech && return 2 / (ep + em)
+        n === :csch && return 2 / (ep - em)
+        n === :sin && return (jp - jm) / (2I)
+        n === :cos && return (jp + jm) / 2
+        n === :tan && return (jp - jm) / (I * (jp + jm))
+        n === :cot && return I * (jp + jm) / (jp - jm)
+        n === :sec && return 2 / (jp + jm)
+        n === :csc && return 2I / (jp - jm)
+    end
+    SymJ._rw_parts(_trig_to_exp, u)
+end
+FUNCS["TrigToExp"] = u -> _trig_to_exp(_s(u))
+FUNCS["ExpandTrigToExp"] = function (args...)
+    u, v = length(args) == 2 ? (SymJ.ONE, _s(args[1])) : (_s(args[1]), _s(args[2]))
+    expand(u * _trig_to_exp(v))
+end
+
+# ---- functions of exponentials: FunctionOfExponentialQ, FunctionOfExponential,
+# FunctionOfExponentialFunction (after IntegrationUtilityFunctions.m). u is a function
+# of F^v, v linear in x, when x appears only in exponentials F^(a + b x) (and hyperbolic
+# functions of linear arguments, as exponentials) whose exponents are rational multiples
+# of one another. Then v = F^(b x/D) for one of them, and each exponential is a constant
+# times a power of v. (RUBI keeps the constant term of v in some cases; v here has none,
+# which is the same substitution up to a constant factor.)
+
+# the exponentials of u: (base, exponent) pairs, `false` when x appears elsewhere;
+# `flag` is set when there is an explicit exponential
+function _foe_collect!(acc, u, x, flag::Ref{Bool})
+    u isa Sym || return true
+    has(u, x) || return true
+    isequal(u, x) && return false
+    k = u.kind
+    if k == SymJ.FN
+        u.name in (:Int, :Derivative) && return false
+        if u.name in _HYPERBOLIC && length(u.args) == 1 && _linear_in(u.args[1], x)
+            push!(acc, (SymJ.E, u.args[1])); return true
+        end
+        return all(a -> _foe_collect!(acc, a, x, flag), u.args)
+    elseif k == SymJ.POW
+        b, e = u.args
+        if !has(b, x)
+            _linear_in(e, x) || return false
+            flag[] = true; push!(acc, (b, e)); return true
+        end
+        has(e, x) && return false
+        return _foe_collect!(acc, b, x, flag)
+    elseif k == SymJ.MUL
+        for (b, e) in zip(u.args, u.exps)
+            if !has(b, x) && has(e, x)
+                _linear_in(e, x) || return false
+                flag[] = true; push!(acc, (b, e))
+            else
+                has(e, x) && return false
+                _foe_collect!(acc, b, x, flag) || return false
+            end
+        end
+        return true
+    end
+    all(a -> _foe_collect!(acc, a, x, flag), u.args)
+end
+
+# the substitution: (base, unit exponent w with v = base^w, D), or nothing
+function _foe(u, x)
+    acc, flag = Tuple{Sym,Sym}[], Ref(false)
+    _foe_collect!(acc, _s(u), x, flag) || return nothing
+    (flag[] && !isempty(acc)) || return nothing
+    C = FUNCS["Coefficient"]
+    B0, w0 = acc[1]
+    e1 = C(w0, x, Sym(1))
+    D = 1
+    for (B, w) in acc
+        r = cancel(log(B) * C(w, x, Sym(1)) / (log(B0) * e1))
+        _isrational(r) || return nothing
+        D = lcm(D, Int(denominator(_rat(r))))
+    end
+    (B0, e1 * x / D, D)
+end
+
+FUNCS["FunctionOfExponentialQ"] = (u, x) -> _foe(_s(u), _s(x)) !== nothing
+FUNCS["FunctionOfExponential"] = function (u, x)
+    s = _foe(_s(u), _s(x)); s === nothing && throw(OSRError("FunctionOfExponential"))
+    s[1]^s[2]
+end
+
+# u with each exponential written as a constant times a power of x (the new variable)
+function _foe_replace(u, x, B0, w)
+    u isa Sym || return u
+    has(u, x) || return u
+    C = FUNCS["Coefficient"]
+    unit = log(B0) * C(w, x, Sym(1))                  # log of v per unit of x
+    pw(B, e) = B^C(e, x, Sym(0)) * x^cancel(log(B) * C(e, x, Sym(1)) / unit)
+    k = u.kind
+    if k == SymJ.FN && u.name in _HYPERBOLIC && length(u.args) == 1 && _linear_in(u.args[1], x)
+        return _foe_replace(_trig_to_exp(u), x, B0, w)
+    elseif k == SymJ.POW && !has(u.args[1], x)
+        return pw(u.args[1], u.args[2])
+    elseif k == SymJ.MUL
+        return Sym(u.num) * prod((!has(b, x) && has(e, x)) ? pw(b, e) : _foe_replace(b, x, B0, w)^e
+                                 for (b, e) in zip(u.args, u.exps); init = SymJ.ONE)
+    end
+    SymJ._rw_parts(a -> _foe_replace(a, x, B0, w), u)
+end
+FUNCS["FunctionOfExponentialFunction"] = function (u, x)
+    x = _s(x); s = _foe(_s(u), x); s === nothing && throw(OSRError("FunctionOfExponentialFunction"))
+    _simplify_integrand(_foe_replace(_s(u), x, s[1], s[2]))
+end
+
+FUNCS["D"] = (u, x) -> diff(_s(u), _s(x))
+
+# (ours: the two exclusions of RUBI's rule, Not[MatchQ[u, w_*(a_.*v_^n_)^m_ /; FreeQ[{a,
+# m, n}, x] && IntegerQ[m*n]]] and Not[MatchQ[u, E^(c_.*(a_. + b_.*x))*F_[v_] /;
+# InverseFunctionQ[F[x]]]]: a power of a power with an integer total exponent, and an
+# exponential times an inverse function, are left to other rules)
+function _foe_excluded(u, x)
+    for f in _factors(u)
+        f.kind == SymJ.POW && f.args[1].kind == SymJ.MUL && _isinteger(f.args[2]) &&
+            any(e -> !_isinteger(e) && _isinteger(e * f.args[2]), f.args[1].exps) && return true
+        f.kind == SymJ.FN && f.name in _INVERSE && return true
+    end
+    false
+end
+FUNCS["FunctionOfExponentialExcludedQ"] = (u, x) -> _foe_excluded(_s(u), _s(x))
