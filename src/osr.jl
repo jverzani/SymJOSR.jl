@@ -194,15 +194,19 @@ _isexactrat(v) = v isa Sym && v.kind == SymJ.NUMBER && SymJ.isexact(v.num) && is
 
 # A pattern may use a name the rule binds as a literal (MatchQ[v, c_.*(e + f*x)] with the
 # rule's e): it is replaced by its value (a Sym literal) before the pattern is compiled,
-# and the compiled pattern cached for those values.
-const _MATCHQ_PATTERNS = Dict{Any,Any}()
+# and the compiled pattern cached for those values. (Keyed by the pattern itself, an
+# IdDict that keeps it alive, so that a reloaded rule set can't reuse its object id; the
+# values' cache is cleared when it grows large.)
+const _MATCHQ_PATTERNS = IdDict{Any,Dict{Any,Any}}()
 _outer_names!(out, n) = (n isa AbstractString ? (wildcard(n) === nothing && n != "x" && !haskey(ATOMS, n) && push!(out, n)) :
     n isa AbstractVector && foreach(a -> _outer_names!(out, a), isapp(n) ? args(n) : n); out)
 _with_values(n, vals) = n isa AbstractString ? get(vals, n, n) :
     n isa AbstractVector ? (isapp(n) ? Any[head(n); [_with_values(a, vals) for a in args(n)]] : Any[_with_values(a, vals) for a in n]) : n
 function _matchq_pattern(p, vals = Dict{String,Any}())
-    key = (objectid(p), Tuple(sort!([(k, string(v)) for (k, v) in vals])))
-    get!(() -> SymJ.pattern(pat(_with_values(p, vals))), _MATCHQ_PATTERNS, key)
+    byvals = get!(() -> Dict{Any,Any}(), _MATCHQ_PATTERNS, p)
+    length(byvals) > 1000 && empty!(byvals)
+    key = Tuple(sort!([(k, v) for (k, v) in vals]; by = first))
+    get!(() -> SymJ.pattern(pat(_with_values(p, vals))), byvals, key)
 end
 pat(n::Sym) = n
 
