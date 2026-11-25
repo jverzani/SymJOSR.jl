@@ -58,6 +58,17 @@ function _unknown!(out, n, slots)
             return out
         end
         test === nothing || _unknown!(out, test, union(slots, _slotnames!(Set{String}(), p)))
+    elseif isapp(n) && head(n) in ("With", "Module") && length(n) == 3
+        # With[{v = e, …}, body]: the values see the rule's names, the body also the locals
+        bs = try
+            _local_bindings(n[2])
+        catch err
+            err isa OSRError || rethrow()
+            push!(out, err.msg)
+            return out
+        end
+        foreach(((_, e),) -> _unknown!(out, e, slots), bs)
+        _unknown!(out, n[3], union(slots, first.(bs)))
     elseif isapp(n)
         h = head(n)
         haskey(FUNCS, h) || haskey(SPECIAL, h) || h in slots || push!(out, h)
@@ -217,6 +228,9 @@ function _int(u::Sym, depth::Int)
         c = FUNCS["FreeFactors"](u, X)
         isone(c) || return c * _int(FUNCS["NonfreeFactors"](u, X), depth)
     end
+    # a constant integrand: Int[a, x] = a*x. RUBI's rule for it is in the older "9.1
+    # Integrand simplification rules", which its load order leaves out.
+    SymJ.has(u, X) || return u * X
     any(v -> isequal(v, u), _STACK) && throw(Cycle())
     R = _RULESET[]::RuleSet
     old = _DEPTH[]

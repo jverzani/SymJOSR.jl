@@ -227,3 +227,40 @@ SPECIAL["MatchQ"] = function (as, c::Ctx)
     end
     false
 end
+
+# ---- local values: With[{v = e, …}, body] and Module[{v = e, …}, body] in a result, and
+# Condition[value, test] in a body (RUBI's With rules). The values are computed from the
+# rule's bindings, all at once as in Mathematica (a later value does not see an earlier
+# one; nested Withs do that), and the body is computed with them. Condition makes the
+# rule fail when its test does not hold, so the next rule is tried.
+
+struct RuleFails <: Exception end
+
+# the (name, value) pairs of {v = e, …}; a Module local without a value is unsupported
+function _local_bindings(lst)
+    (isapp(lst) && head(lst) == "List") || throw(OSRError("With: bindings are not a list"))
+    map(args(lst)) do b
+        (isapp(b) && head(b) == "Set" && length(b) == 3 && b[2] isa AbstractString) ||
+            throw(OSRError("With: a local without a value"))
+        (b[2], b[3])
+    end
+end
+
+function _with(as, c::Ctx)
+    length(as) == 2 || throw(OSRError("With: arity"))
+    bs = _local_bindings(as[1])
+    vals = [ev(e, c) for (_, e) in bs]
+    env = copy(c.env)
+    for ((n, _), v) in zip(bs, vals)
+        env[Symbol(n)] = v
+    end
+    ev(as[2], Ctx(env, c.depth, c.free))
+end
+SPECIAL["With"] = _with
+SPECIAL["Module"] = _with
+
+SPECIAL["Condition"] = function (as, c::Ctx)
+    length(as) == 2 || throw(OSRError("Condition: arity"))
+    guards_hold(Any[as[2]], c) || throw(RuleFails())
+    ev(as[1], c)
+end

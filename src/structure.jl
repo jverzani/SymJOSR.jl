@@ -175,6 +175,11 @@ function _inverse_function_free(u, x)
     all(a -> _inverse_function_free(a, x), u.args) && all(a -> _inverse_function_free(a, x), u.exps)
 end
 FUNCS["InverseFunctionFreeQ"] = (u, x) -> _inverse_function_free(_s(u), _s(x))
+# InverseFunctionQ[u]: u is a log, an inverse trig or hyperbolic function, or a polylog
+FUNCS["InverseFunctionQ"] = function (u)
+    v = _s(u)
+    v.kind == SymJ.FN && v.name in _INVERSE && !(v.name in (:_₂F₁, :AppellF1))
+end
 
 # ---- KnownTrigIntegrandQ[list, u, x]: u is one of the forms of trig integrand RUBI
 # integrates, (a + b F[e + f x])^m (A + B F[e + f x] + C F[e + f x]^2) and its special

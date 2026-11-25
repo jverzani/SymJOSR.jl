@@ -20,6 +20,8 @@ SPECIAL["Int"] = (as, c) -> begin
     v == X || throw(OSRError("Int in a variable other than x"))
     _int(u, c.depth + 1)
 end
+# IntHide[u, x]: Int, with its steps hidden when RUBI shows steps
+SPECIAL["IntHide"] = SPECIAL["Int"]
 
 # substitution: Subst[u, x, v] and Subst[u, x -> v]
 FUNCS["Rule"] = (a, b) -> (_s(a) => _s(b))

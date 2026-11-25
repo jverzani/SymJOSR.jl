@@ -54,11 +54,6 @@ const HOST_RULES = Dict{String,Vector{Any}}(
     "1-algebraic/1.4-miscellaneous/1.4.1-Algebraic-function-simplification.json" => Any[
         Dict{String,Any}("id" => 1, "pattern" => Any["Int", "u_", "x_symbol"],
             "constraints" => Any[Any["SumQ", "u"]], "result" => Any["IntSum", "u", "x"]),
-        # Int[a_, x_Symbol] := a*x /; FreeQ[a, x]: a constant integrand. RUBI's own copy
-        # is in the older "9.1 Integrand simplification rules", which 4.16.1 does not
-        # load; without some such rule a constant integrand is left unevaluated.
-        Dict{String,Any}("id" => 2, "pattern" => Any["Int", "a_", "x_symbol"],
-            "constraints" => Any[Any["FreeQ", "a", "x"]], "result" => Any["Multiply", "a", "x"]),
     ],
 )
 
