@@ -51,7 +51,17 @@ jobs:
       # (also keeps the scratch space, so the OSR rule data is not downloaded every run)
       - uses: julia-actions/cache@v3
       - uses: julia-actions/julia-buildpkg@v1
-      # the tests download the OSR Integration rules from GitHub on first use
+      # the tests download the OSR Integration rules from GitHub on first use; a copy the
+      # cache brought back is downloaded again when OSR's main has moved on (without this,
+      # CI tested the rules of the first cached run)
+      - name: Refresh the OSR rules
+        shell: bash
+        run: |
+          julia --project -e '
+            using SymJ, SymJOSR
+            v, s = SymJOSR.rules_version(), SymJOSR._remote_sha("main")
+            (s === nothing || v.commit != s) && SymJOSR.update_rules!()
+            println("OSR rules: ", SymJOSR.rules_version())'
       - uses: julia-actions/julia-runtest@v1
         with:
           # no coverage on 1.12, as in SymJ: precompiling SymJ for the coverage
