@@ -44,7 +44,40 @@ FUNCS["Numerator"] = u -> numerator(_s(u))
 FUNCS["Denominator"] = u -> denominator(_s(u))
 function _simplify_integrand(u)
     v = cancel(u)
-    leafcount(v) <= leafcount(u) ? v : u
+    w = leafcount(v) <= leafcount(u) ? v : u
+    _has_sin_cos(w) ? _trig_ratios(w) : w
+end
+_has_sin_cos(u) = u isa Sym && ((u.kind == SymJ.FN && (u.name === :sin || u.name === :cos)) ||
+    any(_has_sin_cos, u.args) || any(_has_sin_cos, u.exps))
+
+# Mathematica's automatic form of a product of powers of sin and cos of one argument:
+# sin^p cos^-q is tan^p sec^(q-p) for p <= q, tan^q sin^(p-q) for p > q (Sin[x]/Cos[x] is
+# Tan[x]); cos^p sin^-q likewise with cot and csc. RUBI's SimplifyIntegrand gives its
+# rules that form (log(a cos x) by parts leaves -x sin(x)/cos(x), which is -x tan(x) to
+# the tangent rules).
+function _trig_ratios(u)
+    u isa Sym || return u
+    isempty(u.args) && return u
+    u.kind == SymJ.MUL || return SymJ._rw_parts(_trig_ratios, u)
+    fs = Pair{Sym,Sym}[b => e for (b, e) in zip(u.args, u.exps)]
+    changed = false
+    for i in eachindex(fs), j in eachindex(fs)
+        bi, ei = fs[i]; bj, ej = fs[j]
+        (bi.kind == SymJ.FN && bj.kind == SymJ.FN && length(bi.args) == 1 && length(bj.args) == 1) || continue
+        isequal(bi.args[1], bj.args[1]) || continue
+        (_isinteger(ei) && _isinteger(ej) && _rat(ei) > 0 && _rat(ej) < 0) || continue
+        pair = (bi.name, bj.name)
+        pair in ((:sin, :cos), (:cos, :sin)) || continue
+        t, r, l = pair == (:sin, :cos) ? (:tan, :sec, :sin) : (:cot, :csc, :cos)
+        p, q = _rat(ei), -_rat(ej)
+        v = bi.args[1]
+        k = min(p, q)
+        fs[i] = apply_function(t, Sym[v]) => Sym(k)
+        fs[j] = (p <= q ? apply_function(r, Sym[v]) : apply_function(l, Sym[v])) => Sym(abs(q - p))
+        changed = true
+    end
+    changed || return SymJ._rw_parts(_trig_ratios, u)
+    Sym(u.num) * prod((_trig_ratios(b)^e for (b, e) in fs); init = SymJ.ONE)
 end
 
 # P(x) (c + d x)^n, P a polynomial and n not a nonnegative integer, as a sum of powers

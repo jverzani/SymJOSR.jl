@@ -226,14 +226,28 @@ kept apart (rules in 4.7.5 "Inert trig functions" convert between them).
   Shi/Chi: src/specialfunctions.jl registers them. With them, 1.1.1.2's 32 "wrong"
   (elliptic) answers verify: 1,667 verified, 0 wrong.
 
+### Exponentials (session 2)
+
+SymJ writes exp(x) as ℯ^x, as RUBI's patterns expect. What was missing:
+`TrueQ` (RUBI's by-parts rules in 2.1 are guarded by !TrueQ[$UseGamma]; without them
+x e^x came out as an incomplete gamma), `ExpandTrigToExp` (e^x sinh(x), where the
+exponentials cancel), and RUBI's general substitution v = F^(b x) (2.3's last rule,
+written with With, so not in OSR: a HOST_MISSING entry, with FunctionOfExponentialQ,
+FunctionOfExponential, FunctionOfExponentialFunction and D). SimplifyIntegrand now
+writes sin/cos of one argument as tan (and cos/sin as cot), as Mathematica does
+automatically. Samples since survey 2: exponentials 66 -> 78 (of 120), logarithms 140 ->
+151 (of 360); with the trig and hyperbolic work, inverse trig 250 -> 309 (of 683),
+inverse hyperbolic 267 -> 371 (of 800). Apostol 140 of 175.
+
 ## Upstream: RUBI
 
 - 4.5.2.1, line 51 (`Int[(a + b csc)^m (c (d csc)^p)^n]`): the integral left has
   `Cos[e + f x]` where it should have `Csc[e + f x]` (the sec twin on line 50 has
   `Sec`). OSR copied it. `RULE_FIXES` in src/sums.jl corrects it. Not reported yet.
-- OSR drops RUBI rules wrapped in `If[TrueQ[$LoadShowSteps], ...]` (1.4.1's IntSum,
-  4.1.0.1's DeactivateTrig rule, ...): `HOST_RULES`/`HOST_MISSING` stand in for the
-  two we know of. Worth adding to the OSR issue.
+- OSR drops RUBI rules wrapped in `If[TrueQ[$LoadShowSteps], ...]` (22 rules: 1.4.1's
+  IntSum, 4.1.0.1's DeactivateTrig rule, the 4.7.5 and 9.3 substitutions, ...) and
+  rules with `With` (2.3's exponential substitution, ...): `HOST_RULES`/`HOST_MISSING`
+  stand in for 1.4.1, 4.1.0.1 and 2.3. Draft issue: notes/osr-issue-2-draft.md.
 
 ## Upstream (OpenSymbolicRules/Integration), reported 2026-11-23
 

@@ -62,10 +62,25 @@ const HOST_RULES = Dict{String,Vector{Any}}(
     ],
 )
 
-# Rules of RUBI 4.16.1 that OSR leaves out of files that are not empty (a converter case:
-# rules wrapped in If[TrueQ[$LoadShowSteps], ...]). Each is put first in its file while
-# the file has no rule with the same result head; `head` names that head.
+# Rules of RUBI 4.16.1 that OSR leaves out of files that are not empty (rules wrapped in
+# If[TrueQ[$LoadShowSteps], ...], rules with With). Each is put first in its file ("at" =>
+# "end": last) while the file has no rule with the same result head; `head` names it.
 const HOST_MISSING = Dict{String,Vector{Any}}(
+    # 2.3 (RUBI's line 104): Int[u_, x_] := With[{v = FunctionOfExponential[u, x]},
+    # v/D[v, x] Subst[Int[FunctionOfExponentialFunction[u, x]/x, x], x, v]] /;
+    # FunctionOfExponentialQ[u, x] && ...: the substitution v = F^(b x), dropped by OSR
+    # (With). Last in its file, as in RUBI; its MatchQ exclusions are
+    # FunctionOfExponentialExcludedQ.
+    "2-exponentials/2.3-Miscellaneous-exponentials.json" => Any[
+        Dict{String,Any}("id" => 1000, "head" => "FunctionOfExponentialFunction", "at" => "end",
+            "pattern" => Any["Int", "u_", "x_symbol"],
+            "constraints" => Any[Any["FunctionOfExponentialQ", "u", "x"],
+                Any["Not", Any["FunctionOfExponentialExcludedQ", "u", "x"]]],
+            "result" => Any["Multiply", Any["FunctionOfExponential", "u", "x"],
+                Any["Power", Any["D", Any["FunctionOfExponential", "u", "x"], "x"], -1],
+                Any["Subst", Any["Int", Any["Multiply", Any["FunctionOfExponentialFunction", "u", "x"], Any["Power", "x", -1]], "x"],
+                    "x", Any["FunctionOfExponential", "u", "x"]]]),
+    ],
     # 4.1.0.1: Int[u_, x_Symbol] := Int[DeactivateTrig[u, x], x] /;
     # FunctionOfTrigOfLinearQ[u, x]: hyperbolic functions of linear arguments as trig
     # functions of imaginary ones, and cos as sin(+ π/2), for the trig rules.

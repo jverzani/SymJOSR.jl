@@ -136,7 +136,8 @@ function load_rules(; files = nothing, reload::Bool = false)
         if haskey(HOST_MISSING, f)
             have = JSON.json(rs)
             extra = [r for r in HOST_MISSING[f] if !occursin("\"" * r["head"] * "\"", have)]
-            rs = vcat(extra, rs)
+            rs = vcat([r for r in extra if get(r, "at", "start") != "end"], rs,
+                      [r for r in extra if get(r, "at", "start") == "end"])
         end
         for r in rs
             fix = get(RULE_FIXES, (f, r["id"]), nothing)
@@ -247,6 +248,18 @@ _has_int(e::Sym) = (e.kind == SymJ.FN && e.name === :Int) || any(_has_int, e.arg
 # an answer as it is shown: trig functions of v + π/2 and of imaginary arguments back as
 # those of v and hyperbolic ones, and i's multiplied out
 function _tidy_result(v)
-    w = _activate_hyperbolic(_unshift(v))
+    w = _log_exp(_activate_hyperbolic(_unshift(v)))
     _has_imaginary(w) ? expand(w) : w
+end
+
+# log(e^w) as w, w linear in x: the same up to a constant (2πik), so in an antiderivative
+# (RUBI's answers have x where the substitution v = e^x leaves log(e^x))
+function _log_exp(u)
+    u isa Sym || return u
+    isempty(u.args) && return u
+    if u.kind == SymJ.FN && u.name === :log && length(u.args) == 1
+        a = u.args[1]
+        a.kind == SymJ.POW && isequal(a.args[1], SymJ.E) && FUNCS["LinearQ"](a.args[2], X) && return a.args[2]
+    end
+    SymJ._rw_parts(_log_exp, u)
 end
