@@ -81,6 +81,16 @@ end
     @test F["SubstFor"](a + b * X, X, X) == (X - a) / b
     @test F["FunctionOfQ"](X^2, 1 + X^4, X) && !F["FunctionOfQ"](X^2, 1 + X^3, X)
     @test F["FunctionOfQ"](a + b * X, sqrt(a + b * X), X) && !F["FunctionOfQ"](a + b * X, X * sqrt(a + b * X), X)
+    # trinomials, generalized binomials and trinomials, pseudo-binomials, division
+    @test F["TrinomialQ"](a + b * X^2 + c * X^4, X) && !F["TrinomialQ"](a + b * X + c * X^2, X)
+    @test F["TrinomialMatchQ"](a + b * X^3 + c * X^6, X)
+    @test F["GeneralizedBinomialQ"](a * X^2 + b * X^5, X) && !F["GeneralizedBinomialQ"](a + b * X^5, X)
+    @test !F["GeneralizedBinomialMatchQ"](a + b * X^3, X) && !F["GeneralizedTrinomialQ"](a + b * X + c * X^2, X)
+    @test F["GeneralizedTrinomialDegree"](a * X + b * X^3 + c * X^5, X) == 2
+    @test F["BinomialDegree"](a + b * X^3, X) == 3
+    @test F["AlgebraicFunctionQ"](sqrt(X) + 1 / X, X) && !F["AlgebraicFunctionQ"](log(X), X)
+    @test F["PseudoBinomialPairQ"](1 + (1 + X)^3, 5 + (1 + X)^3, X)
+    @test F["PolynomialDivide"](X^3 + 1, X + 1, X) == X^2 - X + 1
     # P(x) (c + d x)^n as powers of c + d x (RUBI's ExpandLinearProduct)
     e = F["ExpandIntegrand"](X^3 * sqrt(a + b * X), X)
     @test e.kind == SymJ.ADD && iszero(simplify(e - X^3 * sqrt(a + b * X)))
