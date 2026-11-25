@@ -231,7 +231,7 @@ end
 # ---- local values: With[{v = e, …}, body] and Module[{v = e, …}, body] in a result, and
 # Condition[value, test] in a body (RUBI's With rules). The values are computed from the
 # rule's bindings, all at once as in Mathematica (a later value does not see an earlier
-# one; nested Withs do that), and the body is computed with them. Condition makes the
+# one; a nested With does that), and the body is computed with them. Condition makes the
 # rule fail when its test does not hold, so the next rule is tried.
 
 struct RuleFails <: Exception end
