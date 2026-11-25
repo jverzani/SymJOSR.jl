@@ -68,6 +68,11 @@ end
     @test F["KnownSineIntegrandQ"](a + b * cos(X) + c * cos(X)^2, X)
     @test !F["KnownSineIntegrandQ"](X * sin(X), X) && !F["KnownSineIntegrandQ"](tan(X), X)
     @test F["KnownTangentIntegrandQ"](tan(X)^3, X)
+    # SubstFor, FunctionOfQ (FunctionOfExpnQ) for v that is not a trig function
+    @test F["SubstFor"](X^2, 3 + a * X^2 + c * X^4, X) == 3 + a * X + c * X^2
+    @test F["SubstFor"](a + b * X, X, X) == (X - a) / b
+    @test F["FunctionOfQ"](X^2, 1 + X^4, X) && !F["FunctionOfQ"](X^2, 1 + X^3, X)
+    @test F["FunctionOfQ"](a + b * X, sqrt(a + b * X), X) && !F["FunctionOfQ"](a + b * X, X * sqrt(a + b * X), X)
     # P(x) (c + d x)^n as powers of c + d x (RUBI's ExpandLinearProduct)
     e = F["ExpandIntegrand"](X^3 * sqrt(a + b * X), X)
     @test e.kind == SymJ.ADD && iszero(simplify(e - X^3 * sqrt(a + b * X)))
@@ -110,6 +115,10 @@ end
 @testset "exponentials" begin
     R = S.load_rules()
     X = S.X
+    # rules with SubstFor: P(x^n) (a + b x^n)^p as a function of x^n; ProductLog (8.9)
+    for f in (x^5 * sqrt(a + b * x^3), lambertw(x))
+        @test isantiderivative(S.integrate(f, x; rules = R), f)
+    end
     # by parts (2.1, guarded by !TrueQ[$UseGamma]), not the incomplete gamma
     @test S.integrate(x * exp(x), x; rules = R) == x * exp(x) - exp(x)
     # e^x sinh(x): exponentials that cancel (ExpandTrigToExp)
