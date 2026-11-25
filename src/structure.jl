@@ -675,3 +675,223 @@ FUNCS["FunctionOfQ"] = function (v, u, x, pure = false)
     _function_of_expn(u, v, x) !== false
 end
 FUNCS["FunctionOfExpnQ"] = (u, v, x) -> (d = _function_of_expn(_s(u), _s(v), _s(x)); d === false ? false : Sym(d))
+
+# ---- more of RUBI's algebraic predicates and normalizations (IntegrationUtilityFunctions.m).
+# (PowerOfLinearQ, PowerOfLinearMatchQ and NormalizePowerOfLinear, used by four rules, are
+# not defined in RUBI 4.16.1: in Mathematica the conditions stay unevaluated and the rules
+# never apply, so they are left unsupported here, which comes to the same.)
+
+_Rt(u, n) = FUNCS["Rt"](_s(u), Sym(n))
+
+# FractionalPowerFactorQ[u]: u has a factor with a fractional power (or is complex)
+function _fractional_power_factor(u)
+    u isa Sym || return false
+    u.kind == SymJ.NUMBER && return !iszero(imag(u.num))
+    u.kind == SymJ.POW && return _isrational(u.args[2]) && !_isinteger(u.args[2])
+    u.kind == SymJ.MUL && return any(e -> _isrational(e) && !_isinteger(e), u.exps) || any(_fractional_power_factor, u.args)
+    false
+end
+FUNCS["FractionalPowerFactorQ"] = u -> _fractional_power_factor(_s(u))
+FUNCS["NiceSqrtQ"] = u -> (u = _s(u); _isrational(u) ? _rat(u) > 0 : !_fractional_power_factor(_Rt(u, 2)))
+
+# SimplerSqrtQ[u, v]: Sqrt[u] is simpler than Sqrt[v]
+function _simpler_sqrt(u, v)
+    lt(a) = FUNCS["LtQ"](a, Sym(0))
+    lt(v) && !lt(u) && return true
+    lt(u) && !lt(v) && return false
+    su, sv = _Rt(u, 2), _Rt(v, 2)
+    if _isinteger(su)
+        return _isinteger(sv) ? _rat(su) < _rat(sv) : true
+    end
+    _isinteger(sv) && return false
+    if _isrational(su)
+        return _isrational(sv) ? _rat(su) < _rat(sv) : true
+    end
+    _isrational(sv) && return false
+    P = FUNCS["PosQ"]
+    if P(u)
+        return P(v) ? leafcount(su) < leafcount(sv) : true
+    end
+    P(v) && return false
+    leafcount(su) < leafcount(sv) && return true
+    leafcount(sv) < leafcount(su) && return false
+    string(u) < string(v)          # (Not[OrderedQ[{v, u}]]: an order of expressions, approximate)
+end
+FUNCS["SimplerSqrtQ"] = (u, v) -> _simpler_sqrt(_s(u), _s(v))
+
+# AlgebraicFunctionQ[u, x, flag]: built from x with +, * and rational powers (any power
+# free of x with flag)
+function _algebraic_function(u, x, flag)
+    u isa Sym || (u isa AbstractVector && return all(a -> _algebraic_function(a, x, flag), u)) || return true
+    (isempty(u.args) || !has(u, x)) && return true
+    if u.kind == SymJ.POW
+        e = u.args[2]
+        return (_isrational(e) || (flag && !has(e, x))) && _algebraic_function(u.args[1], x, flag)
+    end
+    if u.kind == SymJ.MUL
+        return all(e -> _isrational(e) || (flag && !has(e, x)), u.exps) && all(a -> _algebraic_function(a, x, flag), u.args)
+    end
+    u.kind == SymJ.ADD && return all(a -> _algebraic_function(a, x, flag), u.args)
+    false
+end
+FUNCS["AlgebraicFunctionQ"] = (u, x, flag = false) -> _algebraic_function(u isa AbstractVector ? u : _s(u), _s(x), flag === true)
+
+FUNCS["BinomialDegree"] = (u, x) -> (p = _binomial_parts(_s(u), _s(x)); p === nothing ? throw(OSRError("BinomialDegree")) : p[3])
+
+# TrinomialParts[u, x]: (a, b, c, n) with u = a + b x^n + c x^(2n), or nothing
+function _trinomial_parts(u::Sym, x::Sym)
+    cs = FUNCS["PolyQ"](u, x) ? _coeffs(u, x) : nothing
+    if cs !== nothing
+        L = length(cs)
+        (L < 3 || iseven(L) || _eq(cs[(L+1)÷2], 0)) && return nothing
+        all(i -> i in (1, (L+1)÷2, L) || _eq(cs[i], 0), 1:L) || return nothing
+        return (cs[1], cs[(L+1)÷2], cs[L], Sym((L - 1) ÷ 2))
+    end
+    if u.kind == SymJ.POW && _eq(u.args[2], 2)
+        p = _binomial_parts(u.args[1], x)
+        (p === nothing || _eq(p[1], 0)) && return nothing
+        return (p[1]^2, 2p[1] * p[2], p[2]^2, p[3])
+    end
+    if u.kind == SymJ.MUL
+        c = FUNCS["FreeFactors"](u, x)
+        if !isone(c)
+            t = _trinomial_parts(FUNCS["NonfreeFactors"](u, x), x)
+            return t === nothing ? nothing : (c * t[1], c * t[2], c * t[3], t[4])
+        end
+        fs = _factors(u); length(fs) == 2 || return nothing
+        p, q = _binomial_parts(fs[1], x), _binomial_parts(fs[2], x)
+        (p === nothing || q === nothing) && return nothing
+        (a, b, m), (c2, d, n) = p, q
+        (_eq(m, n) && !_eq(a * d + b * c2, 0)) || return nothing
+        return (a * c2, a * d + b * c2, b * d, m)
+    end
+    if u.kind == SymJ.ADD
+        f = FUNCS["FreeTerms"](u, x)
+        if !iszero(f)
+            t = _trinomial_parts(FUNCS["NonfreeTerms"](u, x), x)
+            return t === nothing ? nothing : (f + t[1], t[2], t[3], t[4])
+        end
+        ms = _monomials(u, x)
+        ms === nothing && return nothing
+        ks = [k for k in keys(ms) if !iszero(k)]
+        length(ks) == 2 || return nothing
+        n, j = _eq(ks[2], 2ks[1]) ? (ks[1], ks[2]) : _eq(ks[1], 2ks[2]) ? (ks[2], ks[1]) : (nothing, nothing)
+        n === nothing && return nothing
+        return (get(ms, SymJ.ZERO, SymJ.ZERO), ms[n], ms[j], n)
+    end
+    nothing
+end
+FUNCS["TrinomialQ"] = (u, x) -> _each(u) do v
+    v = _s(v); x = _s(x)
+    _trinomial_parts(v, x) !== nothing && !FUNCS["QuadraticQ"](v, x) &&
+        !(v.kind == SymJ.POW && _eq(v.args[2], 2) && _binomial_parts(v.args[1], x) !== nothing)
+end
+# TrinomialMatchQ[u, x]: a. + b. x^n. + c. x^j. with j = 2 n (syntactic)
+FUNCS["TrinomialMatchQ"] = (u, x) -> _each(u) do v
+    ms = _monomials(_s(v), _s(x)); ms === nothing && return false
+    ks = [k for k in keys(ms) if !iszero(k)]
+    length(ks) == 2 && (_eq(ks[2], 2ks[1]) || _eq(ks[1], 2ks[2]))
+end
+
+# GeneralizedBinomialParts[u, x]: (a, b, n, q) with u = a x^q + b x^n, n - q > 0
+function _gen_binomial_parts(u::Sym, x::Sym)
+    ms = _monomials(u, x)
+    if ms !== nothing && length(ms) == 2
+        (q, a), (n, b) = collect(ms)
+        if !FUNCS["PosQ"](n - q)
+            q, a, n, b = n, b, q, a
+        end
+        FUNCS["PosQ"](n - q) && return (a, b, n, q)
+    end
+    if u.kind == SymJ.MUL
+        c = FUNCS["FreeFactors"](u, x)
+        if !isone(c)
+            t = _gen_binomial_parts(FUNCS["NonfreeFactors"](u, x), x)
+            return t === nothing ? nothing : (c * t[1], c * t[2], t[3], t[4])
+        end
+        for (i, f) in enumerate(_factors(u))
+            m = _monomial(f, x); (m === nothing || !isone(m[1])) && continue
+            rest = prod(g for (j, g) in enumerate(_factors(u)) if j != i; init = SymJ.ONE)
+            t = _gen_binomial_parts(rest, x)
+            t !== nothing && !_eq(m[2] + t[3], 0) && !_eq(m[2] + t[4], 0) && return (t[1], t[2], m[2] + t[3], m[2] + t[4])
+            p = _binomial_parts(rest, x)
+            p !== nothing && !_eq(m[2] + p[3], 0) && return (p[1], p[2], m[2] + p[3], m[2])
+        end
+    end
+    nothing
+end
+FUNCS["GeneralizedBinomialQ"] = (u, x) -> _each(v -> _gen_binomial_parts(_s(v), _s(x)) !== nothing, u)
+FUNCS["GeneralizedBinomialMatchQ"] = (u, x) -> _each(u) do v
+    ms = _monomials(_s(v), _s(x)); ms !== nothing && length(ms) == 2
+end
+
+# GeneralizedTrinomialParts[u, x]: (a, b, c, n, q) with u = a x^q + b x^n + c x^(2n - q)
+function _gen_trinomial_parts(u::Sym, x::Sym)
+    ms = _monomials(u, x)
+    if ms !== nothing && length(ms) == 3
+        ks = collect(keys(ms))
+        for q in ks, n in ks, r in ks
+            length(unique([q, n, r])) == 3 || continue
+            _eq(r, 2n - q) || continue
+            # (the term with exponent q first: RUBI's pattern a x^q + b x^n + c x^r)
+            FUNCS["PosQ"](n - q) || continue
+            return (ms[q], ms[n], ms[r], n, q)
+        end
+    end
+    if u.kind == SymJ.MUL
+        c = FUNCS["FreeFactors"](u, x)
+        if !isone(c)
+            t = _gen_trinomial_parts(FUNCS["NonfreeFactors"](u, x), x)
+            return t === nothing ? nothing : (c * t[1], c * t[2], c * t[3], t[4], t[5])
+        end
+        for (i, f) in enumerate(_factors(u))
+            m = _monomial(f, x); (m === nothing || !isone(m[1])) && continue
+            rest = prod(g for (j, g) in enumerate(_factors(u)) if j != i; init = SymJ.ONE)
+            t = _gen_trinomial_parts(rest, x)
+            t !== nothing && !_eq(m[2] + t[4], 0) && !_eq(m[2] + t[5], 0) && return (t[1], t[2], t[3], m[2] + t[4], m[2] + t[5])
+            p = _trinomial_parts(rest, x)
+            p !== nothing && !_eq(m[2] + p[4], 0) && return (p[1], p[2], p[3], m[2] + p[4], m[2])
+        end
+    end
+    nothing
+end
+FUNCS["GeneralizedTrinomialQ"] = (u, x) -> _each(v -> _gen_trinomial_parts(_s(v), _s(x)) !== nothing, u)
+FUNCS["GeneralizedTrinomialMatchQ"] = (u, x) -> _each(u) do v
+    ms = _monomials(_s(v), _s(x)); ms === nothing && return false
+    length(ms) == 3 || return false
+    ks = collect(keys(ms))
+    any(_eq(r, 2n - q) for q in ks, n in ks, r in ks if length(unique([q, n, r])) == 3)
+end
+FUNCS["GeneralizedTrinomialDegree"] = (u, x) -> (t = _gen_trinomial_parts(_s(u), _s(x));
+    t === nothing ? throw(OSRError("GeneralizedTrinomialDegree")) : t[4] - t[5])
+
+# PseudoBinomialParts[u, x]: (a, 1, c, d, n) with u = a + (c + d x)^n, n > 2
+function _pseudo_binomial_parts(u::Sym, x::Sym)
+    FUNCS["PolyQ"](u, x) || return nothing
+    cs = _coeffs(u, x); n = length(cs) - 1
+    n > 2 || return nothing
+    d = _Rt(cs[n+1], n)
+    c = cs[n] / (n * d^(n - 1))
+    a = expand(u - (c + d * x)^n)
+    (!_eq(a, 0) && !has(a, x)) || return nothing
+    (a, SymJ.ONE, c, d, Sym(n))
+end
+FUNCS["PseudoBinomialPairQ"] = function (u, v, x)
+    p, q = _pseudo_binomial_parts(_s(u), _s(x)), _pseudo_binomial_parts(_s(v), _s(x))
+    p !== nothing && q !== nothing && all(i -> isequal(p[i], q[i]), 3:5)
+end
+FUNCS["NormalizePseudoBinomial"] = (u, x) -> (p = _pseudo_binomial_parts(_s(u), _s(x));
+    p === nothing ? throw(OSRError("NormalizePseudoBinomial")) : p[1] + p[2] * (p[3] + p[4] * _s(x))^p[5])
+
+# PolynomialDivide[u, v, x]: quotient + remainder/v; [u, v, w, x]: the same in w
+function _polynomial_divide(u, v, x)
+    q, r = _divrem(u, v, x)
+    q + cancel(r) / v
+end
+FUNCS["PolynomialDivide"] = function (args...)
+    length(args) == 3 && return _polynomial_divide(_s(args[1]), _s(args[2]), _s(args[3]))
+    u, v, w, x = map(_s, args)
+    su, sv = _subst_for(w, u, x), _subst_for(w, v, x)
+    (su === nothing || sv === nothing) && throw(OSRError("PolynomialDivide"))
+    subs(_polynomial_divide(su, sv, _T), _T => w)
+end
