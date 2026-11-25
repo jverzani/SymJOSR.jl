@@ -164,3 +164,86 @@ end
 FUNCS["Max"] = (us...) -> (vs = map(_realval, us); any(isnothing, vs) ? throw(OSRError("Max")) : us[argmax(vs)])
 FUNCS["Min"] = (us...) -> (vs = map(_realval, us); any(isnothing, vs) ? throw(OSRError("Min")) : us[argmin(vs)])
 @osrfunc D(u, x) = diff(_s(u), _s(x))
+
+# ---- lists, replacement and small utilities used by RUBI's With and Module rules
+
+# ReplaceAll[u, x -> v] and ReplaceAll[u, {a -> b, …}]: substitution
+FUNCS["ReplaceAll"] = (u, r) -> subs(_s(u), (r isa Pair ? (r,) : Tuple(r))...)
+# Part[list, i] (lists from With's values; 1-based)
+FUNCS["Part"] = function (l, i)
+    (l isa AbstractVector && _isinteger(i)) || throw(OSRError("Part: not a list and an integer"))
+    l[Int(_rat(i))]
+end
+# MemberQ[list, u]: u is in the list; a function name and a head slot's function are
+# compared by name (MemberQ[{sin, cos, …}, trig])
+FUNCS["MemberQ"] = function (l, u)
+    l isa AbstractVector || return false
+    n = _fname(u)
+    any(a -> isequal(a, u) || (n !== nothing && _fname(a) === n), l)
+end
+FUNCS["NonsumQ"] = u -> !FUNCS["SumQ"](u)
+# GCD of exact rationals
+FUNCS["GCD"] = function (us...)
+    all(_isrational, us) || throw(OSRError("GCD of numbers that are not rational"))
+    Sym(reduce(gcd, map(_rat, us)))
+end
+# Numer, Denom: RUBI's numerator and denominator (its versions also split numbers)
+FUNCS["Numer"] = FUNCS["Numerator"]
+FUNCS["Denom"] = FUNCS["Denominator"]
+
+# EasyDQ[u, x]: u is easy to differentiate (RUBI's test before DerivativeDivides tries
+# u as the y of u' y^m; without it the 9.3 rules differentiate and simplify every way of
+# splitting a product). Its RationalFunctionExponents case is left out.
+function _easyd(u, x)
+    u isa Sym || return true
+    (u.kind in (SymJ.SYMBOL, SymJ.NUMBER) || _free(u, x)) && return true
+    FUNCS["BinomialQ"](u, x) && return true
+    if u.kind == SymJ.MUL
+        nf = filter(f -> !_free(f, x), _factors(u))
+        length(nf) == 1 && return _easyd(only(nf), x)
+        # a product of powers of linears
+        return all(f -> (f.kind == SymJ.POW ? FUNCS["LinearQ"](f.args[1], x) && _free(f.args[2], x) : FUNCS["LinearQ"](f, x)), nf)
+    elseif u.kind == SymJ.ADD
+        return all(t -> _easyd(t, x), _terms(u))
+    elseif u.kind == SymJ.POW
+        b, e = u.args
+        _free(b, x) && return _easyd(e, x)
+        _free(e, x) && return _easyd(b, x)
+        return false
+    elseif u.kind == SymJ.FN
+        length(u.args) == 1 && return _easyd(u.args[1], x)
+        length(u.args) == 2 || return false
+        _free(u.args[1], x) && return _easyd(u.args[2], x)
+        _free(u.args[2], x) && return _easyd(u.args[1], x)
+    end
+    false
+end
+FUNCS["EasyDQ"] = (u, x) -> _easyd(_s(u), _s(x))
+
+# q is (numerically) not free of x: its values at two points differ. A quick test before
+# cancel, which is slow on trig and algebraic expressions; inconclusive (false) when a
+# value can't be computed
+function _numerically_nonfree(q::Sym, x::Sym)
+    v1, v2 = _value_at(q, x, 0.43 + 0.29im), _value_at(q, x, 0.71 - 0.13im)
+    (v1 === nothing || v2 === nothing) && return false
+    abs(v1 - v2) > 1e-6 * (1 + abs(v1))
+end
+
+# DerivativeDivides[y, u, x]: u/D[y, x] when it is free of x, else False; False when y
+# is a multiple of x, is not easy to differentiate (EasyDQ), or is a polynomial and u is
+# not one of degree one less
+FUNCS["DerivativeDivides"] = function (y, u, x)
+    y, u, x = _s(y), _s(u), _s(x)
+    _free(cancel(y / x), x) && return false
+    if FUNCS["PolynomialQ"](y, x)
+        (FUNCS["PolynomialQ"](u, x) && isequal(FUNCS["Expon"](u, x), FUNCS["Expon"](y, x) - 1)) || return false
+    else
+        _easyd(y, x) || return false
+    end
+    v = diff(y, x)
+    iszero(v) && return false
+    q = u / v
+    _numerically_nonfree(q, x) && return false
+    q = cancel(q)
+    _free(q, x) ? q : false
+end

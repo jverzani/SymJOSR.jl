@@ -1,3 +1,4 @@
 # Identifiers and mathematical notation, not misspellings
 [default.extend-words]
 typ = "typ"            # a wildcard's type (a_integer)
+Numer = "Numer"        # RUBI's Numer[u] (with Denom)

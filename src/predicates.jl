@@ -51,7 +51,33 @@ function _eq(u, v)
         w = try cancel(d) catch err; err isa InterruptException && rethrow(); nothing end
         w === nothing || return iszero(w)
     end
+    # simplify is slow (trig, roots): a difference clearly nonzero at a point is not zero
+    _numerically_nonzero(d, _s(u), _s(v)) && return false
     iszero(simplify(d))
+end
+
+# the value of u at a generic complex point (the same point for each call: x and the
+# symbols in order), or nothing when it can't be computed
+function _value_at(u::Sym, x::Sym = Sym(:𝓍), xv = 0.43 + 0.29im)
+    syms = sort!(filter(s -> !isequal(s, x), collect(SymJ.free_symbols(u))); by = string)
+    ps = Pair[s => Sym(0.31 + 0.07k + (0.17 + 0.05k) * im) for (k, s) in enumerate(syms)]
+    has(u, x) && push!(ps, x => Sym(xv))
+    try
+        v = ComplexF64(SymJ._evalc(isempty(ps) ? u : subs(u, ps...)))
+        isfinite(v) ? v : nothing
+    catch err
+        err isa InterruptException && rethrow()
+        nothing
+    end
+end
+# d = u - v is not zero at a generic point (a test that never wrongly says nonzero for an
+# exact zero, as the value of an exact zero is 0)
+function _numerically_nonzero(d::Sym, u::Sym, v::Sym)
+    dv = _value_at(d)
+    dv === nothing && return false
+    uv, vv = _value_at(u), _value_at(v)
+    scale = 1 + (uv === nothing ? 0.0 : abs(uv)) + (vv === nothing ? 0.0 : abs(vv))
+    abs(dv) > 1e-8 * scale
 end
 
 # built from symbols and exact numbers with +, * and integer powers

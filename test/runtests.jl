@@ -110,7 +110,30 @@ end
     # the locals are known names in the body; a Module local without a value is not
     @test isempty(S._unknown!(Set{String}(), Any["With", L("v" => "a"), "v"], Set(["a"])))
     @test !isempty(S._unknown!(Set{String}(), Any["With", L("v" => "a"), "w"], Set(["a"])))
-    @test !isempty(S._unknown!(Set{String}(), Any["Module", Any["List", "v"], "v"], Set(["a"])))
+    @test !isempty(S._unknown!(Set{String}(), Any["With", Any["List", "v"], "v"], Set(["a"])))
+    # Module: a local without a value is a new symbol; Set and CompoundExpression in its
+    # body; Sum over a local
+    @test isempty(S._unknown!(Set{String}(), Any["Module", Any["List", "v"], "v"], Set(["a"])))
+    v = S.ev(Any["Module", Any["List", "v"], "v"], c)
+    @test v isa Sym && v.kind == SymJ.SYMBOL && !isequal(v, S.ev(Any["Module", Any["List", "v"], "v"], c))
+    @test S.ev(Any["Module", Any["List", "u"], Any["CompoundExpression", Any["Set", "u", Any["Add", "a", 1]], Any["Multiply", "u", "u"]]], c) == 9
+    @test S.ev(Any["Module", Any["List", "k"], Any["Sum", Any["Power", "k", 2], Any["List", "k", 1, "a"]]], c) == 5
+    @test isempty(S._unknown!(Set{String}(), Any["Sum", "k", Any["List", "k", 0, "a"]], Set(["a"])))
+    F = S.FUNCS
+    X = S.X
+    @test isequal(F["ReplaceAll"](X^2 + a, X => X - b), (X - b)^2 + a)
+    @test isequal(F["ReplaceAll"](X + a, [a => b]), X + b)
+    @test F["Part"](Any[a, b], Sym(2)) === b
+    @test F["MemberQ"](Any[S.FuncName("sin"), S.FuncName("cos")], cos) && !F["MemberQ"](Any[S.FuncName("sin")], tan)
+    @test F["NonsumQ"](a * X) && !F["NonsumQ"](a + X)
+    @test F["GCD"](Sym(4), Sym(6)) == 2 && F["GCD"](Sym(1//2), Sym(3//4)) == 1//4
+    @test isequal(F["DerivativeDivides"](X^2 + 1, 3 * X, X), Sym(3//2))
+    @test F["DerivativeDivides"](X^2 + 1, X^2, X) === false && F["DerivativeDivides"](a * X, Sym(1), X) === false
+    @test isequal(F["DerivativeDivides"](sin(X), 2 * cos(X), X), Sym(2)) && F["DerivativeDivides"](sin(X), sin(X), X) === false
+    # EasyDQ: functions of easy arguments, sums, one nonfree factor; not x*sin(x)
+    @test F["EasyDQ"](sin(a + b * X), X) && F["EasyDQ"](a * X^2 + sqrt(X), X) && !F["EasyDQ"](X * sin(X), X)
+    # EqQ: the numeric test before simplify rejects only what is not equal
+    @test F["EqQ"](sin(X)^2 + cos(X)^2, 1) && !F["EqQ"](sin(X), cos(X)) && F["EqQ"](sqrt(a)^2, a)
     # a constant integrand, without a rule for it
     @test S.integrate(a * b, x) == a * b * x
     F = S.FUNCS["InverseFunctionQ"]
