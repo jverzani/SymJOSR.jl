@@ -75,7 +75,11 @@ are in `notes/session2/scripts/` (`survey2.jl`, `survey_driver.sh`).
 Survey 1 ran the code of PR #2; survey 2 the `survey-fixes` branch before its trig
 predicates. Survey 1 had 83 errors (test problems that could not be read) and 7
 problems that never returned (answer checks in SymJ's certified `N`); survey 2 has none.
-Hyperbolic functions are the weakest section.
+Hyperbolic functions were the weakest section.
+
+After session 2's hyperbolic work (RUBI's DeactivateTrig rule, missing in OSR, as a
+host rule; cos as sin(+ π/2)), the same samples: hyperbolic 73 -> 342 verified (35%),
+trig 513 -> 1,000 (37%), nothing lost. Apostol 139 of 175.
 
 ## 1. Speed: index the rules by the integrand's shape
 
@@ -221,6 +225,15 @@ kept apart (rules in 4.7.5 "Inert trig functions" convert between them).
   incomplete elliptic integrals, log integral, or (outside its RischIntegrate extension)
   Shi/Chi: src/specialfunctions.jl registers them. With them, 1.1.1.2's 32 "wrong"
   (elliptic) answers verify: 1,667 verified, 0 wrong.
+
+## Upstream: RUBI
+
+- 4.5.2.1, line 51 (`Int[(a + b csc)^m (c (d csc)^p)^n]`): the integral left has
+  `Cos[e + f x]` where it should have `Csc[e + f x]` (the sec twin on line 50 has
+  `Sec`). OSR copied it. `RULE_FIXES` in src/sums.jl corrects it. Not reported yet.
+- OSR drops RUBI rules wrapped in `If[TrueQ[$LoadShowSteps], ...]` (1.4.1's IntSum,
+  4.1.0.1's DeactivateTrig rule, ...): `HOST_RULES`/`HOST_MISSING` stand in for the
+  two we know of. Worth adding to the OSR issue.
 
 ## Upstream (OpenSymbolicRules/Integration), reported 2026-11-23
 

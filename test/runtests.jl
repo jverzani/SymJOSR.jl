@@ -94,6 +94,19 @@ end
     @test !isempty(r.steps)
 end
 
+@testset "trig and hyperbolic" begin
+    R = S.load_rules()
+    # cos as sin(+ π/2), hyperbolic functions as trig of imaginary arguments (RUBI's
+    # DeactivateTrig, 4.1.0.1 #1, which OSR does not have)
+    for f in (cos(x), x * cos(x), sec(x)^2, cot(x), sinh(x), cosh(x)^2, x * sinh(x), 1 / cosh(x), tanh(x))
+        @test isantiderivative(S.integrate(f, x; rules = R), f)
+    end
+    @test S.integrate(x * sinh(x), x; rules = R) == x * cosh(x) - sinh(x)    # back in hyperbolic form
+    # RUBI's 4.5.2.1 csc rule (Cos for Csc in its result), corrected
+    f = a^2 * sqrt(a * sec(x)^2) * sec(x)^4
+    @test isantiderivative(S.integrate(f, x; rules = R), f)
+end
+
 @testset "special functions" begin
     A(n, as...) = SymJ.apply_function(n, Sym[Sym.(as)...])
     # RUBI's PolyLog is SymJ's li (log(t)/(t + 1), Apostol #156, has a Li₂ answer)

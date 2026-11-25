@@ -61,3 +61,32 @@ const HOST_RULES = Dict{String,Vector{Any}}(
             "constraints" => Any[Any["FreeQ", "a", "x"]], "result" => Any["Multiply", "a", "x"]),
     ],
 )
+
+# Rules of RUBI 4.16.1 that OSR leaves out of files that are not empty (a converter case:
+# rules wrapped in If[TrueQ[$LoadShowSteps], ...]). Each is put first in its file while
+# the file has no rule with the same result head; `head` names that head.
+const HOST_MISSING = Dict{String,Vector{Any}}(
+    # 4.1.0.1: Int[u_, x_Symbol] := Int[DeactivateTrig[u, x], x] /;
+    # FunctionOfTrigOfLinearQ[u, x]: hyperbolic functions of linear arguments as trig
+    # functions of imaginary ones, and cos as sin(+ π/2), for the trig rules.
+    # (HasTrigQ and DeactivateChangesQ are ours: a quick test first, as every integrand
+    # comes here; and RUBI's active and inert trig functions are the same functions here,
+    # so the rule is only of use when it changes the integrand.)
+    "4-trig/4.1-sine/4.1.0.1-(a-sin)^m-(b-trg)^n.json" => Any[
+        Dict{String,Any}("id" => 0, "head" => "DeactivateTrig",
+            "pattern" => Any["Int", "u_", "x_symbol"],
+            "constraints" => Any[Any["HasTrigQ", "u"], Any["FunctionOfTrigOfLinearQ", "u", "x"], Any["DeactivateChangesQ", "u", "x"]],
+            "result" => Any["Int", Any["DeactivateTrig", "u", "x"], "x"]),
+    ],
+)
+
+# Rules of RUBI 4.16.1 (and so of OSR) whose results are wrong, corrected here while
+# OSR's text still has the error: (file, id) => (wrong, right), substrings of the result
+# in OSR's JSON. To be reported upstream.
+const RULE_FIXES = Dict{Tuple{String,Int},Tuple{String,String}}(
+    # 4.5.2.1 (RUBI line 51): Int[(a + b csc)^m (c (d csc)^p)^n] takes out the fractional
+    # power of (c (d csc)^p)^n; the integral left is of (a + b Csc)^m (d Csc)^(n p), but
+    # RUBI has Cos for Csc there (its sec twin, line 50, has Sec). Gave wrong answers
+    # for sqrt(a sec^2) sec^4 and the like.
+    ("4-trig/4.5-secant/4.5.2.1-(a+b-sec)^m-(c+d-sec)^n.json", 47) => ("\"Cos\"", "\"Csc\""),
+)
