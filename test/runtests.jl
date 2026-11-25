@@ -76,7 +76,8 @@ end
     # trinomials, generalized binomials and trinomials, pseudo-binomials, division
     @test F["TrinomialQ"](a + b * X^2 + c * X^4, X) && !F["TrinomialQ"](a + b * X + c * X^2, X)
     @test F["TrinomialMatchQ"](a + b * X^3 + c * X^6, X)
-    @test F["GeneralizedBinomialQ"](a * X^2 + b * X^5, X)
+    @test F["GeneralizedBinomialQ"](a * X^2 + b * X^5, X) && !F["GeneralizedBinomialQ"](a + b * X^5, X)
+    @test !F["GeneralizedBinomialMatchQ"](a + b * X^3, X) && !F["GeneralizedTrinomialQ"](a + b * X + c * X^2, X)
     @test F["GeneralizedTrinomialDegree"](a * X + b * X^3 + c * X^5, X) == 2
     @test F["BinomialDegree"](a + b * X^3, X) == 3
     @test F["AlgebraicFunctionQ"](sqrt(X) + 1 / X, X) && !F["AlgebraicFunctionQ"](log(X), X)

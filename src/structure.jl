@@ -794,9 +794,10 @@ FUNCS["TrinomialMatchQ"] = (u, x) -> _each(u) do v
 end
 
 # GeneralizedBinomialParts[u, x]: (a, b, n, q) with u = a x^q + b x^n, n - q > 0
+# (every term has a power of x: a x^q + b x^n, unlike a binomial, has no constant term)
 function _gen_binomial_parts(u::Sym, x::Sym)
     ms = _monomials(u, x)
-    if ms !== nothing && length(ms) == 2
+    if ms !== nothing && length(ms) == 2 && !any(iszero, keys(ms))
         (q, a), (n, b) = collect(ms)
         if !FUNCS["PosQ"](n - q)
             q, a, n, b = n, b, q, a
@@ -822,13 +823,13 @@ function _gen_binomial_parts(u::Sym, x::Sym)
 end
 FUNCS["GeneralizedBinomialQ"] = (u, x) -> _each(v -> _gen_binomial_parts(_s(v), _s(x)) !== nothing, u)
 FUNCS["GeneralizedBinomialMatchQ"] = (u, x) -> _each(u) do v
-    ms = _monomials(_s(v), _s(x)); ms !== nothing && length(ms) == 2
+    ms = _monomials(_s(v), _s(x)); ms !== nothing && length(ms) == 2 && !any(iszero, keys(ms))
 end
 
 # GeneralizedTrinomialParts[u, x]: (a, b, c, n, q) with u = a x^q + b x^n + c x^(2n - q)
 function _gen_trinomial_parts(u::Sym, x::Sym)
     ms = _monomials(u, x)
-    if ms !== nothing && length(ms) == 3
+    if ms !== nothing && length(ms) == 3 && !any(iszero, keys(ms))
         ks = collect(keys(ms))
         for q in ks, n in ks, r in ks
             length(unique([q, n, r])) == 3 || continue
@@ -858,7 +859,7 @@ end
 FUNCS["GeneralizedTrinomialQ"] = (u, x) -> _each(v -> _gen_trinomial_parts(_s(v), _s(x)) !== nothing, u)
 FUNCS["GeneralizedTrinomialMatchQ"] = (u, x) -> _each(u) do v
     ms = _monomials(_s(v), _s(x)); ms === nothing && return false
-    length(ms) == 3 || return false
+    (length(ms) == 3 && !any(iszero, keys(ms))) || return false
     ks = collect(keys(ms))
     any(_eq(r, 2n - q) for q in ks, n in ks, r in ks if length(unique([q, n, r])) == 3)
 end
