@@ -571,3 +571,107 @@ function _foe_excluded(u, x)
     false
 end
 FUNCS["FunctionOfExponentialExcludedQ"] = (u, x) -> _foe_excluded(_s(u), _s(x))
+
+# ---- SubstFor[v, u, x]: u as a function of v, with x standing for v; FunctionOfQ[v, u,
+# x]: u is a function of v (after IntegrationUtilityFunctions.m, for v that is not a trig
+# or hyperbolic function: those, RUBI's SubstForTrig and SubstForHyperbolic, are not
+# done here, so SubstFor rejects the rule and FunctionOfQ is false)
+
+const _T = Sym(:𝓉)          # the new variable while substituting
+
+# SubstForAux[u, v, x]: occurrences of v, and of powers of v's base, as powers of _T
+function _subst_for_aux(u::Sym, v::Sym, x::Sym)
+    isequal(u, v) && return _T
+    if isempty(u.args)
+        v.kind == SymJ.POW && !has(v.args[2], x) && isequal(u, v.args[1]) && return _T^(1 / v.args[2])
+        return u
+    end
+    if u.kind == SymJ.POW && !has(u.args[2], x)
+        b, e = u.args
+        isequal(b, v) && return _T^e
+        v.kind == SymJ.POW && !has(v.args[2], x) && isequal(b, v.args[1]) && return _T^cancel(e / v.args[2])
+        return _subst_for_aux(b, v, x)^e
+    end
+    if u.kind == SymJ.MUL
+        c = FUNCS["FreeFactors"](u, x)
+        isone(c) || return c * _subst_for_aux(FUNCS["NonfreeFactors"](u, x), v, x)
+        return prod((_subst_for_aux(isone(e) ? b : b^e, v, x) for (b, e) in zip(u.args, u.exps)); init = SymJ.ONE)
+    end
+    SymJ._rw_parts(a -> _subst_for_aux(a, v, x), u)
+end
+
+# u in terms of v, as an expression in _T; nothing when x is left
+function _subst_for(v, u, x)
+    v, u, x = _s(v), _s(u), _s(x)
+    (v.kind == SymJ.FN && (v.name in _TRIG || v.name in _HYPERBOLIC)) && return nothing
+    isempty(v.args) && return subs(u, v => _T)                  # an atom
+    c = FUNCS["FreeFactors"](v, x)
+    if v.kind == SymJ.MUL && !isone(c)                         # SubstFor[w, u, x/c] with v = c w
+        w = _subst_for(FUNCS["NonfreeFactors"](v, x), u, x)
+        return w === nothing ? nothing : subs(w, _T => _T / c)
+    end
+    if _linear_in(v, x)                                         # x = (t - a)/b, exactly
+        a, b = FUNCS["Coefficient"](v, x, Sym(0)), FUNCS["Coefficient"](v, x, Sym(1))
+        return subs(u, x => (_T - a) / b)
+    end
+    w = _subst_for_aux(u, v, x)
+    has(w, x) ? nothing : w
+end
+
+FUNCS["SubstFor"] = function (args...)
+    w = length(args) == 4 ? _s(args[1]) : SymJ.ONE
+    v, u, x = length(args) == 4 ? args[2:4] : args
+    r = _subst_for(v, u, x)
+    r === nothing && throw(OSRError("SubstFor: not a function of $v"))
+    _simplify_integrand(w * subs(r, _T => _s(x)))
+end
+
+# FunctionOfExpnQ[u, v, x]: u is a function of v (v not a trig or hyperbolic function):
+# the degree, as a rational, or false. Powers of v's base must be integer multiples of
+# v's power.
+function _function_of_expn(u::Sym, v::Sym, x::Sym)
+    isequal(u, v) && return 1 // 1
+    isempty(u.args) && return isequal(u, x) ? false : 0 // 1
+    u.kind == SymJ.FN && u.name in (:Int, :Derivative) && return false
+    if u.kind == SymJ.POW && !has(u.args[2], x)
+        b, e = u.args
+        isequal(b, v) && return _isinteger(e) ? _rat(e) : 1 // 1
+        if v.kind == SymJ.POW && !has(v.args[2], x) && isequal(b, v.args[1])
+            ve = v.args[2]
+            if _isrational(ve)
+                (_isrational(e) && isinteger(_rat(e) / _rat(ve)) && (_rat(ve) > 0 || _rat(e) < 0)) || return false
+                return _rat(e) / _rat(ve)
+            end
+            q = cancel(e / ve)
+            return _isinteger(q) ? _rat(q) : false
+        end
+        return _function_of_expn(b, v, x)
+    end
+    if u.kind == SymJ.MUL
+        c = FUNCS["FreeFactors"](u, x)
+        isone(c) || return _function_of_expn(FUNCS["NonfreeFactors"](u, x), v, x)
+        parts = [isone(e) ? b : b^e for (b, e) in zip(u.args, u.exps)]
+    elseif u.kind == SymJ.ADD
+        parts = _terms(u)
+    else
+        parts = u.args
+    end
+    g = 0 // 1
+    for p in parts
+        d = _function_of_expn(p, v, x)
+        d === false && return false
+        g = gcd(g, d)
+    end
+    g
+end
+
+FUNCS["FunctionOfQ"] = function (v, u, x, pure = false)
+    v, u, x = _s(v), _s(u), _s(x)
+    has(u, x) || return false
+    isempty(v.args) && return true
+    c = FUNCS["FreeFactors"](v, x)
+    v.kind == SymJ.MUL && !isone(c) && (v = FUNCS["NonfreeFactors"](v, x))
+    (v.kind == SymJ.FN && (v.name in _TRIG || v.name in _HYPERBOLIC)) && return false   # (not done)
+    _function_of_expn(u, v, x) !== false
+end
+FUNCS["FunctionOfExpnQ"] = (u, v, x) -> (d = _function_of_expn(_s(u), _s(v), _s(x)); d === false ? false : Sym(d))
