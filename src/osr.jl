@@ -236,20 +236,26 @@ end
 
 struct RuleFails <: Exception end
 
-# the (name, value) pairs of {v = e, …}; a Module local without a value is unsupported
-function _local_bindings(lst)
+# the (name, value) pairs of {v = e, …}; a local without a value, (name, nothing), only
+# in a Module
+function _local_bindings(lst, bare::Bool = false)
     (isapp(lst) && head(lst) == "List") || throw(OSRError("With: bindings are not a list"))
     map(args(lst)) do b
+        bare && b isa AbstractString && return (b, nothing)
         (isapp(b) && head(b) == "Set" && length(b) == 3 && b[2] isa AbstractString) ||
             throw(OSRError("With: a local without a value"))
         (b[2], b[3])
     end
 end
 
-function _with(as, c::Ctx)
+# a Module local without a value is a new symbol, as Mathematica's x$123
+const _LOCALS = Ref(0)
+_fresh(n) = Sym(Symbol(n, "\$", _LOCALS[] += 1))
+
+function _with(as, c::Ctx; bare::Bool = false)
     length(as) == 2 || throw(OSRError("With: arity"))
-    bs = _local_bindings(as[1])
-    vals = [ev(e, c) for (_, e) in bs]
+    bs = _local_bindings(as[1], bare)
+    vals = [e === nothing ? _fresh(n) : ev(e, c) for (n, e) in bs]
     env = copy(c.env)
     for ((n, _), v) in zip(bs, vals)
         env[Symbol(n)] = v
@@ -257,7 +263,43 @@ function _with(as, c::Ctx)
     ev(as[2], Ctx(env, c.depth, c.free))
 end
 SPECIAL["With"] = _with
-SPECIAL["Module"] = _with
+SPECIAL["Module"] = (as, c) -> _with(as, c; bare = true)
+
+# in a Module's body: u = e; …; v (a local set, then the value of the last expression)
+SPECIAL["Set"] = function (as, c::Ctx)
+    (length(as) == 2 && as[1] isa AbstractString) || throw(OSRError("Set: not a name"))
+    v = ev(as[2], c)
+    c.env[Symbol(as[1])] = v
+    v
+end
+SPECIAL["CompoundExpression"] = function (as, c::Ctx)
+    v = nothing
+    for a in as
+        v = ev(a, c)
+    end
+    v
+end
+
+# Sum[u, {k, lo, hi}]: k a local, lo and hi integers
+SPECIAL["Sum"] = function (as, c::Ctx)
+    it = as[2]
+    (length(as) == 2 && isapp(it) && head(it) == "List" && length(it) == 4 && it[2] isa AbstractString) ||
+        throw(OSRError("Sum: an iterator {k, lo, hi}"))
+    lo, hi = ev(it[3], c), ev(it[4], c)
+    (_isinteger(lo) && _isinteger(hi)) || throw(OSRError("Sum: bounds that are not integers"))
+    # k may be a Module local, a symbol already in values computed with it (u = Int[…k…];
+    # Sum[u, {k, 1, n}]): it is replaced there too
+    old = get(c.env, Symbol(it[2]), nothing)
+    env = copy(c.env)
+    t = Sym(0)
+    for k in Int(_rat(lo)):Int(_rat(hi))
+        env[Symbol(it[2])] = Sym(k)
+        v = _s(ev(as[1], Ctx(env, c.depth, c.free)))
+        old isa Sym && old.kind == SymJ.SYMBOL && (v = subs(v, old => Sym(k)))
+        t += v
+    end
+    t
+end
 
 SPECIAL["Condition"] = function (as, c::Ctx)
     length(as) == 2 || throw(OSRError("Condition: arity"))

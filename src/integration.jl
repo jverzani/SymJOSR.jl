@@ -61,14 +61,18 @@ function _unknown!(out, n, slots)
     elseif isapp(n) && head(n) in ("With", "Module") && length(n) == 3
         # With[{v = e, …}, body]: the values see the rule's names, the body also the locals
         bs = try
-            _local_bindings(n[2])
+            _local_bindings(n[2], head(n) == "Module")
         catch err
             err isa OSRError || rethrow()
             push!(out, err.msg)
             return out
         end
-        foreach(((_, e),) -> _unknown!(out, e, slots), bs)
+        foreach(((_, e),) -> e === nothing || _unknown!(out, e, slots), bs)
         _unknown!(out, n[3], union(slots, first.(bs)))
+    elseif isapp(n) && head(n) == "Sum" && length(n) == 3 && isapp(n[3]) && length(n[3]) == 4 && n[3][2] isa AbstractString
+        # Sum[u, {k, lo, hi}]: k is bound in u
+        foreach(a -> _unknown!(out, a, slots), n[3][3:4])
+        _unknown!(out, n[2], union(slots, [n[3][2]]))
     elseif isapp(n)
         h = head(n)
         haskey(FUNCS, h) || haskey(SPECIAL, h) || h in slots || push!(out, h)
