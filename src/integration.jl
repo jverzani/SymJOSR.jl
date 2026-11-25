@@ -43,6 +43,21 @@ end
 function _unknown!(out, n, slots)
     if n isa AbstractString
         n == "x" || n in slots || haskey(ATOMS, n) || haskey(FUNCS, n) || push!(out, n)
+    elseif isapp(n) && head(n) == "MatchQ" && length(n) == 3
+        # MatchQ[u, pattern] or MatchQ[u, Condition[pattern, test]]: the pattern's names
+        # are bound in the test; a pattern that can't be translated is unsupported
+        _unknown!(out, n[2], slots)
+        p, test = _matchq_parts(n[3])
+        outer = _outer_names!(String[], p)
+        foreach(nm -> _unknown!(out, nm, slots), outer)          # bound by the rule
+        try
+            SymJ.pattern(pat(_with_values(p, Dict{String,Any}(nm => Sym(Symbol(nm)) for nm in outer))))
+        catch err
+            err isa InterruptException && rethrow()
+            push!(out, "MatchQ pattern: " * first(sprint(showerror, err), 60))
+            return out
+        end
+        test === nothing || _unknown!(out, test, union(slots, _slotnames!(Set{String}(), p)))
     elseif isapp(n)
         h = head(n)
         haskey(FUNCS, h) || haskey(SPECIAL, h) || h in slots || push!(out, h)

@@ -187,3 +187,39 @@ _typepred(t) =t == "integer" ? _isexactint : t == "rational" ? _isexactrat :
 
 _isexactint(v) = v isa Sym && v.kind == SymJ.NUMBER && SymJ.isexact(v.num) && isinteger(v)
 _isexactrat(v) = v isa Sym && v.kind == SymJ.NUMBER && SymJ.isexact(v.num) && isreal(v.num)
+
+# ---- MatchQ[u, pattern] and MatchQ[u, Condition[pattern, test]] in constraints: the
+# pattern as a SymJ pattern (compiled once), matched against u; with a Condition, some
+# match whose bindings, added to the rule's, make the test true
+
+# A pattern may use a name the rule binds as a literal (MatchQ[v, c_.*(e + f*x)] with the
+# rule's e): it is replaced by its value (a Sym literal) before the pattern is compiled,
+# and the compiled pattern cached for those values.
+const _MATCHQ_PATTERNS = Dict{Any,Any}()
+_outer_names!(out, n) = (n isa AbstractString ? (wildcard(n) === nothing && n != "x" && !haskey(ATOMS, n) && push!(out, n)) :
+    n isa AbstractVector && foreach(a -> _outer_names!(out, a), isapp(n) ? args(n) : n); out)
+_with_values(n, vals) = n isa AbstractString ? get(vals, n, n) :
+    n isa AbstractVector ? (isapp(n) ? Any[head(n); [_with_values(a, vals) for a in args(n)]] : Any[_with_values(a, vals) for a in n]) : n
+function _matchq_pattern(p, vals = Dict{String,Any}())
+    key = (objectid(p), Tuple(sort!([(k, string(v)) for (k, v) in vals])))
+    get!(() -> SymJ.pattern(pat(_with_values(p, vals))), _MATCHQ_PATTERNS, key)
+end
+pat(n::Sym) = n
+
+function _matchq_parts(spec)
+    isapp(spec) && head(spec) == "Condition" ? (spec[2], spec[3]) : (spec, nothing)
+end
+
+SPECIAL["MatchQ"] = function (as, c::Ctx)
+    u = ev(as[1], c)
+    u isa Sym || (u = try Sym(u) catch; return false end)
+    p, test = _matchq_parts(as[2])
+    names = _outer_names!(String[], p)
+    P = _matchq_pattern(p, Dict{String,Any}(n => _s(ev(n, c)) for n in names))
+    for m in eachmatch(P, u)
+        test === nothing && return true
+        env = merge(c.env, Dict{Symbol,Any}(k => v for (k, v) in m))
+        guards_hold(Any[test], Ctx(env, c.depth, c.free)) && return true
+    end
+    false
+end
