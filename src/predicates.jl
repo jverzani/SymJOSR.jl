@@ -104,6 +104,7 @@ FUNCS["LessEqual"] = FUNCS["LeQ"]
 @osrfunc Not(b) = !truthy(b)
 # TrueQ[u]: u is True (RUBI's guards on its settings, !TrueQ[$UseGamma])
 @osrfunc TrueQ(u) = u === true
+@osrfunc FalseQ(u) = u === false
 
 # And, Or, If: arguments evaluated as needed
 SPECIAL["And"] = (as, c) -> all(a -> truthy(ev(a, c)), as)

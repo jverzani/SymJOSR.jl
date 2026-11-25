@@ -97,6 +97,26 @@ end
 end
 
 # the rules come from SYMJOSR_INTEGRATION_DIR or a download
+@testset "With and Condition" begin
+    # With[{v = e, …}, body]: the values see the rule's names, all at once
+    c = S.Ctx(Dict{Symbol,Any}(:a => Sym(2)), 0)
+    L(bs...) = Any["List", (Any["Set", n, e] for (n, e) in bs)...]
+    @test S.ev(Any["With", L("b" => Any["Multiply", "a", 3]), Any["Add", "a", "b"]], c) == 8
+    @test S.ev(Any["With", L("a" => 5, "b" => "a"), "b"], c) == 2
+    @test S.ev(Any["With", L("b" => 3), Any["With", L("d" => "b"), "d"]], c) == 3
+    # Condition[value, test]: the rule fails when the test does not hold
+    @test S.ev(Any["Condition", 1, Any["EqQ", "a", 2]], c) == 1
+    @test_throws S.RuleFails S.ev(Any["Condition", 1, Any["EqQ", "a", 3]], c)
+    # the locals are known names in the body; a Module local without a value is not
+    @test isempty(S._unknown!(Set{String}(), Any["With", L("v" => "a"), "v"], Set(["a"])))
+    @test !isempty(S._unknown!(Set{String}(), Any["With", L("v" => "a"), "w"], Set(["a"])))
+    @test !isempty(S._unknown!(Set{String}(), Any["Module", Any["List", "v"], "v"], Set(["a"])))
+    # a constant integrand, without a rule for it
+    @test S.integrate(a * b, x) == a * b * x
+    F = S.FUNCS["InverseFunctionQ"]
+    @test F(log(x)) && F(asinh(x)) && !F(sin(x)) && !F(x)
+end
+
 @testset "integration" begin
     R = S.load_rules()
     @test length(R.rules) > 4000
