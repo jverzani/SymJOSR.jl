@@ -19,6 +19,7 @@ SymJ = {rev = "main", url = "https://github.com/jverzani/SymJ.jl"}
 
 [compat]
 CodecZlib = "0.7.9"
+Downloads = "1.6"
 JSON = "1.13.4"
 QuadGK = "2.11.3"
 Random = "1.11.0"
