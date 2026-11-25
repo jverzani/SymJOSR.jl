@@ -68,6 +68,14 @@ end
     @test F["KnownSineIntegrandQ"](a + b * cos(X) + c * cos(X)^2, X)
     @test !F["KnownSineIntegrandQ"](X * sin(X), X) && !F["KnownSineIntegrandQ"](tan(X), X)
     @test F["KnownTangentIntegrandQ"](tan(X)^3, X)
+    # MatchQ[u, Condition[pattern, test]] in constraints: some match passes the test,
+    # with its bindings and the rule's (Not[MatchQ[Pq, x^m. u. /; IntegerQ[m]]])
+    spec = Any["Condition", Any["Multiply", Any["Power", "x", "m."], "u."], Any["IntegerQ", "m"]]
+    mq(u) = S.SPECIAL["MatchQ"](Any["Pq", spec], S.Ctx(Dict{Symbol,Any}(:Pq => u), 0))
+    @test mq(X^2 * (1 + X)) && mq(3X^5) && !mq(1 + X) && !mq(sqrt(X) * (1 + X))
+    spec2 = Any["Condition", Any["Power", "x", "n_"], Any["EqQ", "n", "k"]]
+    @test S.SPECIAL["MatchQ"](Any["v", spec2], S.Ctx(Dict{Symbol,Any}(:v => X^3, :k => Sym(3)), 0))
+    @test !S.SPECIAL["MatchQ"](Any["v", spec2], S.Ctx(Dict{Symbol,Any}(:v => X^3, :k => Sym(2)), 0))
     # SubstFor, FunctionOfQ (FunctionOfExpnQ) for v that is not a trig function
     @test F["SubstFor"](X^2, 3 + a * X^2 + c * X^4, X) == 3 + a * X + c * X^2
     @test F["SubstFor"](a + b * X, X, X) == (X - a) / b
