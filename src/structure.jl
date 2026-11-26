@@ -586,9 +586,8 @@ end
 FUNCS["FunctionOfExponentialExcludedQ"] = (u, x) -> _foe_excluded(_s(u), _s(x))
 
 # ---- SubstFor[v, u, x]: u as a function of v, with x standing for v; FunctionOfQ[v, u,
-# x]: u is a function of v (after IntegrationUtilityFunctions.m; for a trig v see
-# trigsubst.jl; RUBI's SubstForHyperbolic is not done here, so for a hyperbolic v SubstFor
-# rejects the rule and FunctionOfQ is false)
+# x]: u is a function of v (after IntegrationUtilityFunctions.m; for a trig or hyperbolic
+# v see trigsubst.jl)
 
 const _T = Sym(:𝓉)          # the new variable while substituting
 
@@ -622,8 +621,8 @@ function _subst_for(v, u, x)
         w = _subst_for(FUNCS["NonfreeFactors"](v, x), u, x)
         return w === nothing ? nothing : subs(w, _T => _T / c)
     end
-    v.kind == SymJ.FN && v.name in _HYPERBOLIC && return nothing  # (SubstForHyperbolic: not done)
-    v.kind == SymJ.FN && v.name in _TRIG && length(v.args) == 1 && return _subst_for_trigv(v, u, x)
+    v.kind == SymJ.FN && (v.name in _TRIG || v.name in _HYPERBOLIC) && length(v.args) == 1 &&
+        return _subst_for_trigv(v, u, x)
     if _linear_in(v, x)                                         # x = (t - a)/b, exactly
         a, b = FUNCS["Coefficient"](v, x, Sym(0)), FUNCS["Coefficient"](v, x, Sym(1))
         return subs(u, x => (_T - a) / b)
@@ -639,11 +638,11 @@ FUNCS["SubstFor"] = function (args...)
     r === nothing && throw(OSRError("SubstFor: not a function of $v"))
     r = _simplify_integrand(w * subs(r, _T => _s(x)))
     vs = _s(v)
-    vs.kind == SymJ.FN && vs.name in _TRIG ? _factored(r) : r
+    vs.kind == SymJ.FN && (vs.name in _TRIG || vs.name in _HYPERBOLIC) ? _factored(r) : r
 end
 
-# A rational function as RUBI's SimplifyIntegrand leaves the result of a trig substitution:
-# factored. Our cancel multiplies out the denominator, and a denominator such as
+# A rational function as RUBI's SimplifyIntegrand leaves the result of a trig or
+# hyperbolic substitution: factored. Our cancel multiplies out the denominator, and a denominator such as
 # (a + b x)(1 + x^2) multiplied out sends the cubic rules of 1.1.3 to Cardano's roots
 # instead of partial fractions (4.3.4.2 #28 did not finish).
 function _factored(r::Sym)
@@ -697,8 +696,8 @@ FUNCS["FunctionOfQ"] = function (v, u, x, pure = false)
     isempty(v.args) && return true
     c = FUNCS["FreeFactors"](v, x)
     v.kind == SymJ.MUL && !isone(c) && (v = FUNCS["NonfreeFactors"](v, x))
-    v.kind == SymJ.FN && v.name in _HYPERBOLIC && return false   # (FunctionOfSinhQ etc.: not done)
-    v.kind == SymJ.FN && v.name in _TRIG && length(v.args) == 1 && return _function_of_trigq(v, u, x, pure === true)
+    v.kind == SymJ.FN && (v.name in _TRIG || v.name in _HYPERBOLIC) && length(v.args) == 1 &&
+        return _function_of_trigq(v, u, x, pure === true)
     _function_of_expn(u, v, x) !== false
 end
 FUNCS["FunctionOfExpnQ"] = (u, v, x) -> (d = _function_of_expn(_s(u), _s(v), _s(x)); d === false ? false : Sym(d))
