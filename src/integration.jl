@@ -96,6 +96,7 @@ function _mkrule(file, r)
     holder = Ref{OSRRule}()
     derived = occursin("∂", string(pe))         # Derivative[n_][f_][x_] slots
     rhs = function (d)
+        _check_deadline()                          # once per candidate match
         if derived
             d = _derived_bindings(d)
             d === nothing && return nothing
@@ -217,6 +218,10 @@ _inert_int(u) = apply_function(:Int, Sym[u, X])
 
 struct TimedOut <: Exception end
 const _DEADLINE = Ref(Inf)
+# The time limit is checked on entry to _int, before each rule is tried and for each
+# candidate match of a rule (its right side): a large integrand can keep one _int busy
+# trying ~7,000 rules for minutes without entering another (1.3.1 #157 took 860 s).
+_check_deadline() = time() > _DEADLINE[] && throw(TimedOut())
 
 # The integrands being integrated, outermost first. A step that comes back to one of
 # them made no progress (RUBI's rules never do that, but approximations such as our
@@ -245,7 +250,7 @@ end
 
 function _int(u::Sym, depth::Int)
     depth > MAXDEPTH[] && throw(GiveUp(u))
-    time() > _DEADLINE[] && throw(TimedOut())
+    _check_deadline()
     # constant factors outside: Int[a*u] = a*Int[u]. RUBI's results keep them outside
     # (Star[a, Int[u, x]]), so its rules never see one; SymJ's canonical form puts them
     # back in, where rules such as 1.1.3.7 #1 (Pq = a) rewrite the integrand to itself.
@@ -267,6 +272,7 @@ function _int(u::Sym, depth::Int)
     push!(_STACK, u)
     try
         for r in R.rules
+            _check_deadline()                      # once per rule tried
             v = r.rule(u)
             v === nothing || return _s(v)
         end
