@@ -21,6 +21,7 @@ read_osr(n; free::Bool = true) = _s(ev(n, Ctx(Dict{Symbol,Any}(), 0, free)))
 # fair point is "wrong". When too few fair points turn up in this range of values
 # (asin(2x - 5) needs 2 < x < 3), points need only keep the ₂F₁s off their cuts.
 function _verify(r::Sym, f::Sym; points = 3)
+    f, r = _concrete_functions(f, r)            # f(x), f'(x): as concrete functions
     d = diff(r, X) - f
     syms = sort!(collect(SymJ.free_symbols(d) ∪ SymJ.free_symbols(f) ∪ Set([X])); by = string)
     zs = _hyp_args!(Sym[], r)

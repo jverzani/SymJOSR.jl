@@ -229,3 +229,32 @@ end
     @test S._verify(r, f)
     @test all(_ -> S._verify(r, f), 1:3) && !S._verify(2r, f)
 end
+
+@testset "formal derivatives" begin
+    R = S.load_rules()
+    X = S.X
+    f, g = SymJ.SymFunction(:f), SymJ.SymFunction(:g)
+    fp, gp = diff(f(X), X), diff(g(X), X)
+    # reading 8.10's Derivative[n][f][x]
+    D(n, h) = Any["Apply", Any["Apply", Any["Derivative", n], Any["List", h]], Any["List", "x"]]
+    @test isequal(S.read_osr(D(2, "f")), diff(f(X), X, 2))
+    @test isequal(S.read_osr(Any["Multiply", D(1, "f"), Any["g", "x"]]), fp * g(X))
+    @test_throws S.OSRError S.read_osr(D("n", "f"))       # a symbolic order: not supported
+    # 9.1's rules: the product and quotient rules, read backwards
+    # (a sum is integrated term by term first, by 1.4.1, as in RUBI: f'g - fg' stays)
+    @test S.integrate(fp * g(X) - f(X) * gp, X; rules = R) === nothing
+    @test isequal(S.integrate((fp * g(X) - f(X) * gp) / g(X)^2, X; rules = R), f(X) / g(X))
+    @test isequal(S.integrate((fp * g(X) - f(X) * gp) / (f(X) * g(X)), X; rules = R), log(f(X) / g(X)))
+    # f'(x) f(x)^n and f'/f through the other rules; checked with f concrete
+    for u in (fp * f(X)^3, fp / f(X), fp / sqrt(1 + f(X)))
+        r = S.integrate(u, X; rules = R)
+        @test r !== nothing && S._verify(r, u)
+    end
+    # Derivative[n_][f_][x_]: n and f read off the match; f as bound elsewhere
+    @test S._fderiv_parts(diff(f(X), X, 3)) == (3, f)
+    @test S._fderiv_parts(f(X)) === nothing && S._fderiv_parts(diff(sin(X), X)) === nothing
+    @test S._derived_bindings(Dict{Symbol,Any}(Symbol("∂n∂f") => diff(f(X), X, 2), :f => g)) === nothing
+    # the check: a wrong answer stays wrong with f concrete
+    @test !S._verify(f(X)^2, fp * f(X))
+    @test S._verify(f(X)^2 / 2, fp * f(X))
+end
