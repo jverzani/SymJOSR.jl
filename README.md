@@ -31,6 +31,11 @@ Not registered yet: `SymJ` is taken from GitHub through `[sources]` (Julia 1.12+
   `ExpandIntegrand`, a function such as `ArcTanh`) is one entry in `SymJOSR.FUNCS` or
   `SymJOSR.SPECIAL`. A rule using a head without an entry is skipped, not loaded
   wrongly; `SymJOSR.unsupported_heads(load_rules())` is the to-do list.
+* **OSR's errata.** OSR keeps `rules/` exactly as converted from RUBI and lists
+  corrections separately, in `docs/rubi-errata.json`: rules RUBI states wrongly
+  (`replace`) and omitted rules OSR has qualified with extra guards (`enable`). They are
+  applied when the rules are loaded, each only if the rule's digest still matches the
+  record (`load_rules().errata` lists those applied; a stale record gives a warning).
 * **RUBI's load order.** Rules are tried in the order RUBI 4.16.1's `Rubi.m` loads
   them (`src/rubi_load_order.txt`), not in section order: priority depends on it.
 
@@ -47,11 +52,13 @@ points.
 
 ## Known gaps
 
-* **OSR data.** 31 of the rule files RUBI loads are empty in OSR (about 1,100 of RUBI's
-  ~7,200 rules: all of 1.1.2, most of 1.2.1 and 1.3, 1.4.1-1.4.3, 9.1, 9.2). Where an
-  empty file holds a rule the rest depend on, a host rule stands in for it while the
-  file is empty (`SymJOSR.HOST_RULES`; so far 1.4.1's term-by-term integration of
-  sums).
+* **OSR data.** All 199 rule files RUBI loads now have rules in OSR (7,421 of them),
+  but some of RUBI's rules are still missing: rules written with `With` or
+  `Module` (OSR issue #10) and the 22 rules wrapped in `If[TrueQ[$LoadShowSteps], …]`,
+  among them RUBI's general substitution rules (OSR issue #11). Where a missing rule is
+  one the rest depend on, a host rule stands in for it until OSR has it
+  (`SymJOSR.HOST_MISSING`: 2.3's substitution v = e^(d x) and 4.1.0.1's
+  `DeactivateTrig`).
 * **Heuristics.** `PosQ`, `SimplerQ`, `SumSimplerQ`, `Simp` and `ExpandIntegrand`
   follow RUBI's definitions approximately: answers are correct but may differ in form
   from RUBI's optimal antiderivatives.

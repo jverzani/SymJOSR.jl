@@ -80,20 +80,3 @@ const HOST_MISSING = Dict{String,Vector{Any}}(
             "result" => Any["Int", Any["DeactivateTrig", "u", "x"], "x"]),
     ],
 )
-
-# Rules of RUBI 4.16.1 (and so of OSR) whose results are wrong, corrected here while
-# OSR's text still has the error: (file, id) => (wrong, right), substrings of the result
-# in OSR's JSON. To be reported upstream.
-const RULE_FIXES = Dict{Tuple{String,Int},Tuple{String,String}}(
-    # 4.5.2.1 (RUBI line 51): Int[(a + b csc)^m (c (d csc)^p)^n] takes out the fractional
-    # power of (c (d csc)^p)^n; the integral left is of (a + b Csc)^m (d Csc)^(n p), but
-    # RUBI has Cos for Csc there (its sec twin, line 50, has Sec). Gave wrong answers
-    # for sqrt(a sec^2) sec^4 and the like.
-    ("4-trig/4.5-secant/4.5.2.1-(a+b-sec)^m-(c+d-sec)^n.json", 47) => ("\"Cos\"", "\"Csc\""),
-    # 8.1 (RUBI line 55): Int[F[d (a + b Log[c x^n])]/x] with F one of Erf, Erfc, Erfi is
-    # 1/n Subst[Int[F[d (a + b x)], x], x, Log[c x^n]]; RUBI leaves out the Int, and gave
-    # erf(…)/n for ∫erf(d(a + b log(c x^n)))/x.
-    ("8-special/8.1-Error-functions.json", 52) =>
-        ("[\"Subst\",[\"F\",[\"Multiply\",\"d\",[\"Add\",\"a\",[\"Multiply\",\"b\",\"x\"]]]],\"x\"",
-         "[\"Subst\",[\"Int\",[\"F\",[\"Multiply\",\"d\",[\"Add\",\"a\",[\"Multiply\",\"b\",\"x\"]]]],\"x\"],\"x\""),
-)
