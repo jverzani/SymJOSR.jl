@@ -406,7 +406,13 @@ function _function_of_trig_of_linear(u, x)
     w !== :null && w !== false && _algebraic_trig(u, x)
 end
 FUNCS["FunctionOfTrigOfLinearQ"] = (u, x) -> _function_of_trig_of_linear(_s(u), _s(x))
-FUNCS["FunctionOfTrig"] = (u, v, x) -> (w = _function_of_trig(_s(u), v === nothing ? :null : v, _s(x)); w === :null ? nothing : w)
+# FunctionOfTrig[u, v, x], and FunctionOfTrig[u, x]: the v of u's trig functions, False
+# when u has none (the form 4.7.5's general substitutions use)
+FUNCS["FunctionOfTrig"] = function (u, v, x = nothing)
+    x === nothing && return (w = _function_of_trig(_s(u), :null, _s(v)); w === :null ? false : w)
+    w = _function_of_trig(_s(u), v === nothing ? :null : v, _s(x))
+    w === :null ? nothing : w
+end
 
 # (ours: the rule from 4.1.0.1 changes nothing here unless u has a hyperbolic function)
 _has_hyperbolic(u) = u isa Sym && ((u.kind == SymJ.FN && u.name in _HYPERBOLIC) ||
@@ -580,9 +586,9 @@ end
 FUNCS["FunctionOfExponentialExcludedQ"] = (u, x) -> _foe_excluded(_s(u), _s(x))
 
 # ---- SubstFor[v, u, x]: u as a function of v, with x standing for v; FunctionOfQ[v, u,
-# x]: u is a function of v (after IntegrationUtilityFunctions.m, for v that is not a trig
-# or hyperbolic function: those, RUBI's SubstForTrig and SubstForHyperbolic, are not
-# done here, so SubstFor rejects the rule and FunctionOfQ is false)
+# x]: u is a function of v (after IntegrationUtilityFunctions.m; for a trig v see
+# trigsubst.jl; RUBI's SubstForHyperbolic is not done here, so for a hyperbolic v SubstFor
+# rejects the rule and FunctionOfQ is false)
 
 const _T = Sym(:𝓉)          # the new variable while substituting
 
@@ -610,13 +616,14 @@ end
 # u in terms of v, as an expression in _T; nothing when x is left
 function _subst_for(v, u, x)
     v, u, x = _s(v), _s(u), _s(x)
-    (v.kind == SymJ.FN && (v.name in _TRIG || v.name in _HYPERBOLIC)) && return nothing
     isempty(v.args) && return subs(u, v => _T)                  # an atom
     c = FUNCS["FreeFactors"](v, x)
     if v.kind == SymJ.MUL && !isone(c)                         # SubstFor[w, u, x/c] with v = c w
         w = _subst_for(FUNCS["NonfreeFactors"](v, x), u, x)
         return w === nothing ? nothing : subs(w, _T => _T / c)
     end
+    v.kind == SymJ.FN && v.name in _HYPERBOLIC && return nothing  # (SubstForHyperbolic: not done)
+    v.kind == SymJ.FN && v.name in _TRIG && length(v.args) == 1 && return _subst_for_trigv(v, u, x)
     if _linear_in(v, x)                                         # x = (t - a)/b, exactly
         a, b = FUNCS["Coefficient"](v, x, Sym(0)), FUNCS["Coefficient"](v, x, Sym(1))
         return subs(u, x => (_T - a) / b)
@@ -630,7 +637,19 @@ FUNCS["SubstFor"] = function (args...)
     v, u, x = length(args) == 4 ? args[2:4] : args
     r = _subst_for(v, u, x)
     r === nothing && throw(OSRError("SubstFor: not a function of $v"))
-    _simplify_integrand(w * subs(r, _T => _s(x)))
+    r = _simplify_integrand(w * subs(r, _T => _s(x)))
+    vs = _s(v)
+    vs.kind == SymJ.FN && vs.name in _TRIG ? _factored(r) : r
+end
+
+# A rational function as RUBI's SimplifyIntegrand leaves the result of a trig substitution:
+# factored. Our cancel multiplies out the denominator, and a denominator such as
+# (a + b x)(1 + x^2) multiplied out sends the cubic rules of 1.1.3 to Cardano's roots
+# instead of partial fractions (4.3.4.2 #28 did not finish).
+function _factored(r::Sym)
+    _is_ratexpr(r) || return r
+    f = try factor(r) catch err; err isa InterruptException && rethrow(); r end
+    f isa Sym ? f : r
 end
 
 # FunctionOfExpnQ[u, v, x]: u is a function of v (v not a trig or hyperbolic function):
@@ -678,7 +697,8 @@ FUNCS["FunctionOfQ"] = function (v, u, x, pure = false)
     isempty(v.args) && return true
     c = FUNCS["FreeFactors"](v, x)
     v.kind == SymJ.MUL && !isone(c) && (v = FUNCS["NonfreeFactors"](v, x))
-    (v.kind == SymJ.FN && (v.name in _TRIG || v.name in _HYPERBOLIC)) && return false   # (not done)
+    v.kind == SymJ.FN && v.name in _HYPERBOLIC && return false   # (FunctionOfSinhQ etc.: not done)
+    v.kind == SymJ.FN && v.name in _TRIG && length(v.args) == 1 && return _function_of_trigq(v, u, x, pure === true)
     _function_of_expn(u, v, x) !== false
 end
 FUNCS["FunctionOfExpnQ"] = (u, v, x) -> (d = _function_of_expn(_s(u), _s(v), _s(x)); d === false ? false : Sym(d))
