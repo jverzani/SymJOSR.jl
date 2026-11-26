@@ -361,3 +361,13 @@ end
     s, c = S._multiple_angle(3, a, b, true)
     @test iszero(expand(s - (3 * b^2 * a + a^3))) && iszero(expand(c - (b^3 + 3 * a^2 * b)))
 end
+
+@testset "time limit" begin
+    R = S.load_rules()
+    X = S.X
+    # 1.3.1 #157: one _int on a large integrand tries the rules for minutes without entering
+    # another _int; the limit is also checked before each rule and for each candidate match
+    u = X^2 / (X^6 + 18 * X^4 + 324 * X^3 + 108 * X^2 + 216)^2
+    t = @elapsed st = S._check(u, R, 2.0)[1]
+    @test st === :timeout && t < 30
+end
