@@ -15,6 +15,7 @@ struct RuleSet
     skipped::Vector{NamedTuple{(:file, :id, :reason),Tuple{String,Int,String}}}
     missing::Dict{String,Int}     # unsupported head or name => number of rules it stops
     source::Any
+    errata::Vector{NamedTuple{(:file, :id, :action, :issue),Tuple{String,Int,String,String}}}  # OSR errata applied
 end
 Base.show(io::IO, R::RuleSet) =
     print(io, "RuleSet(", length(R.rules), " rules loaded, ", length(R.skipped), " skipped)")
@@ -164,9 +165,11 @@ function load_rules(; files = nothing, reload::Bool = false)
     order = rule_files(dir)
     files === nothing || filter!(f -> any(s -> occursin(s, f), files), order)
     rules, skipped, missing = OSRRule[], NamedTuple{(:file, :id, :reason),Tuple{String,Int,String}}[], Dict{String,Int}()
+    recs, applied = errata(dir), NamedTuple{(:file, :id, :action, :issue),Tuple{String,Int,String,String}}[]
     for f in order
         data = JSON.parsefile(joinpath(dir, "rules", f))
-        rs = data["rules"]
+        rs, a = _apply_errata(data["rules"], f, get(data, "identity", nothing), recs)
+        append!(applied, a)
         isempty(rs) && haskey(HOST_RULES, f) && (rs = HOST_RULES[f])
         if haskey(HOST_MISSING, f)
             have = JSON.json(rs)
@@ -175,10 +178,6 @@ function load_rules(; files = nothing, reload::Bool = false)
                       [r for r in extra if get(r, "at", "start") == "end"])
         end
         for r in rs
-            fix = get(RULE_FIXES, (f, r["id"]), nothing)
-            if fix !== nothing && occursin(fix[1], JSON.json(r["result"]))
-                r = merge(r, Dict("result" => JSON.parse(replace(JSON.json(r["result"]), fix[1] => fix[2]))))
-            end
             x = try
                 _mkrule(f, r)
             catch err
@@ -198,7 +197,7 @@ function load_rules(; files = nothing, reload::Bool = false)
             end
         end
     end
-    _RULESETS[key] = RuleSet(rules, skipped, missing, rules_version())
+    _RULESETS[key] = RuleSet(rules, skipped, missing, rules_version(), applied)
 end
 
 """

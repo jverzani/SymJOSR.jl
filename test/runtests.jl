@@ -259,6 +259,48 @@ end
     @test S._verify(f(X)^2 / 2, fp * f(X))
 end
 
+@testset "OSR errata" begin
+    # Python's json.dumps(…, ensure_ascii=False, separators=(",", ":"), sort_keys=True)
+    @test S._canonical(Dict("b" => Any[1, "x\"y\\\n", nothing, true], "a" => "π")) ==
+        "{\"a\":\"π\",\"b\":[1,\"x\\\"y\\\\\\n\",null,true]}"
+    # every record's own digest, as OSR computes it
+    recs = S.errata()
+    @test !isempty(recs)
+    @test all(e -> e["action"] == "replace" ? S._payload_sha(e["replacement"]) == e["replacement_sha256"] :
+                   S._payload_sha(e["rule"]) == e["rule_sha256"], recs)
+    # applying records: replace, enable before a rule, and a record that no longer matches
+    r1 = Dict{String,Any}("id" => 1, "constraints" => Any[], "pattern" => "p", "result" => "wrong")
+    r2 = Dict{String,Any}("id" => 2, "constraints" => Any[], "pattern" => "q", "result" => "s")
+    new = Dict{String,Any}("constraints" => Any[], "pattern" => "p", "result" => "right")
+    add = Dict{String,Any}("constraints" => Any["c"], "pattern" => "e", "result" => "t")
+    rep = Dict{String,Any}("file_identity" => "F", "rule_id" => 1, "action" => "replace",
+        "payload_sha256" => S._payload_sha(r1), "replacement" => new, "replacement_sha256" => S._payload_sha(new))
+    en = Dict{String,Any}("file_identity" => "F", "rule_id" => 9, "action" => "enable", "insert_before" => 2,
+        "rule" => add, "rule_sha256" => S._payload_sha(add))
+    rs, applied = S._apply_errata(Any[r1, r2], "f.json", "F", Any[rep, en])
+    @test [r["id"] for r in rs] == [1, 9, 2] && rs[1]["result"] == "right" && rs[2]["result"] == "t"
+    @test [a.id for a in applied] == [1, 9] && r1["result"] == "wrong"     # the input is not changed
+    @test S._apply_errata(Any[r1, r2], "f.json", "G", Any[rep, en])[1] == Any[r1, r2]   # another file
+    stale = merge(rep, Dict{String,Any}("payload_sha256" => "0"^64))
+    rs, applied = @test_logs (:warn, r"has changed since the record") S._apply_errata(Any[r1], "f.json", "F", Any[stale])
+    @test rs[1]["result"] == "wrong" && isempty(applied)
+    # the records for the rules we load all apply
+    R = S.load_rules()
+    mine = [e for e in recs if startswith(e["file_identity"], "rubi:")]
+    @test length(R.errata) == length(mine)
+    @test all(a -> any(r -> r.file == a.file && r.id == a.id, R.rules), R.errata)
+    # 8.1 #52 (the residual Int, OSR #12) and 8.4 #27 (also its F guard)
+    A(n, u) = SymJ.apply_function(n, Sym[u])
+    for u in (A(:erf, a + b * log(x)) / x, A(:sinint, a + b * log(x)) / x)
+        @test isantiderivative(S.integrate(u, x; rules = R), u)
+    end
+    # 9.1 cells 1 and 8 (OSR #13): f'(x) and f''/f'
+    X = S.X
+    f = SymJ.SymFunction(:f)
+    @test isequal(S.integrate(diff(f(X), X, 2), X; rules = R), diff(f(X), X))
+    @test isequal(S.integrate(diff(f(X), X, 2) / diff(f(X), X), X; rules = R), log(diff(f(X), X)))
+end
+
 @testset "fractional powers of linears" begin
     R = S.load_rules()
     X = S.X
