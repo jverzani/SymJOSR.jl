@@ -346,3 +346,18 @@ end
         @test r !== nothing && S._verify(r, u)
     end
 end
+
+@testset "hyperbolic substitutions" begin
+    X = S.X
+    F = S.FUNCS
+    # FunctionOfQ[hyperbolic v, u, x]: RUBI's FunctionOfSinhQ, FunctionOfCoshQ, FunctionOfTanhQ
+    @test F["FunctionOfQ"](tanh(X), 1 / (a^2 * sinh(X)^2 + b^2 * cosh(X)^2), X)
+    @test F["FunctionOfQ"](sinh(X), sinh(X)^3 + cosh(2X), X) && !F["FunctionOfQ"](sinh(X), cosh(X) * sinh(X)^2, X)
+    @test F["FunctionOfQ"](cosh(X), sinh(X)^2 * cosh(X), X) && !F["FunctionOfQ"](cosh(X), sinh(X), X)
+    @test F["FunctionOfQ"](tanh(X), tanh(X)^2, X, true) && !F["FunctionOfQ"](tanh(X), sinh(X)^2, X, true)
+    # SubstFor[hyperbolic v, u, x]: SubstForHyperbolic, with multiple angles
+    @test isequal(F["SubstFor"](1 / (1 - X^2), tanh(X), 1 / (a^2 * sinh(X)^2 + b^2 * cosh(X)^2), X), 1 / (a^2 * X^2 + b^2))
+    @test isequal(F["SubstFor"](sinh(X), sinh(X)^3, X), X^3)
+    s, c = S._multiple_angle(3, a, b, true)
+    @test iszero(expand(s - (3 * b^2 * a + a^3))) && iszero(expand(c - (b^3 + 3 * a^2 * b)))
+end
