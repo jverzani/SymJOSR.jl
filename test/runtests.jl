@@ -320,3 +320,29 @@ end
         @test r !== nothing && S._verify(r, u)
     end
 end
+
+@testset "trig substitutions" begin
+    R = S.load_rules()
+    X = S.X
+    F = S.FUNCS
+    # FunctionOfTrig[u, x], as 4.7.5's general substitutions call it
+    @test isequal(F["FunctionOfTrig"](sin(2X) * cos(X), X), X) && F["FunctionOfTrig"](X^2, X) === false
+    # FunctionOfQ[trig v, u, x]: RUBI's FunctionOfSinQ, FunctionOfCosQ, FunctionOfTanQ
+    @test F["FunctionOfQ"](tan(X), 1 / (a^2 * sin(X)^2 + b^2 * cos(X)^2), X)
+    @test F["FunctionOfQ"](sin(X), sin(X)^3 + cos(2X), X) && !F["FunctionOfQ"](sin(X), cos(X) * sin(X)^2, X)
+    @test F["FunctionOfQ"](cos(X), sin(X)^2 * cos(X), X) && !F["FunctionOfQ"](cos(X), sin(X), X)
+    @test F["FunctionOfQ"](tan(X), tan(X)^2, X, true) && !F["FunctionOfQ"](tan(X), sin(X)^2, X, true)
+    # SubstFor[trig v, u, x]: SubstForTrig, with multiple angles
+    @test isequal(F["SubstFor"](1 / (1 + X^2), tan(X), 1 / (a^2 * sin(X)^2 + b^2 * cos(X)^2), X), 1 / (a^2 * X^2 + b^2))
+    @test isequal(F["SubstFor"](sin(X), sin(X)^3, X), X^3)
+    s, c = S._multiple_angle(3, a, b)
+    @test iszero(expand(s - (3 * b^2 * a - a^3))) && iszero(expand(c - (b^3 - 3 * a^2 * b)))
+    # Apostol #145, by 4.7.5's t = tan x; 4.3.4.2 #28, whose substituted integrand has to
+    # stay factored (it did not finish multiplied out)
+    @test isequal(F["SubstFor"](1 / (1 + X^2), tan(X), (b * tan(X) + c * tan(X)^2) * cot(X) / (a + b * tan(X)), X),
+                  factor((c * X + b) / ((b * X + a) * (X^2 + 1))))
+    for u in (1 / (a^2 * sin(X)^2 + b^2 * cos(X)^2), 1 / (1 + cos(X)^2), sin(2X) / (1 + sin(X)^2))
+        r = S.integrate(u, X; rules = R)
+        @test r !== nothing && S._verify(r, u)
+    end
+end
