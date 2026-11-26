@@ -155,7 +155,9 @@ function pat(n::AbstractString)
 end
 function pat(n::AbstractVector)
     isapp(n) || throw(OSRError("pattern: a list"))
-    h, as = head(n), [pat(a) for a in args(n)]
+    h = head(n)
+    h == "Apply" && return _pat_apply(args(n))          # f_[x_], Derivative[n][f_][x_]
+    as = [pat(a) for a in args(n)]
     # an optional factor, b. in b.*x, has the default 1, and the term is not optional: in
     # Mathematica a_ + b_.*x_ needs a term in x. SymJ lets the term ~!b*x of a sum be
     # absent with b = 0, so b is required to be nonzero. (Without it, (a + b x)(c + d)/e
