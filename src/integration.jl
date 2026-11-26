@@ -222,6 +222,24 @@ const _DEADLINE = Ref(Inf)
 struct Cycle <: Exception end
 const _STACK = Sym[]
 
+# Int[x^m (c x)^n ..., x] for a product of powers of x and of c x, at least one of each:
+# x u/(s + 1), s the sum of the exponents, or x u log(x) when s = -1 (x u is then
+# piecewise constant); nothing for any other integrand
+function _monomial_int(u::Sym)
+    u.kind == SymJ.MUL || return nothing
+    s, cx = SymJ.ZERO, false
+    for (a, e) in zip(u.args, u.exps)
+        SymJ.has(e, X) && return nothing
+        if !isequal(a, X)
+            a.kind == SymJ.MUL && isequal(FUNCS["NonfreeFactors"](a, X), X) || return nothing
+            cx = true
+        end
+        s += e
+    end
+    cx && any(a -> isequal(a, X), u.args) || return nothing
+    _eq(s, -1) ? u * X * log(X) : u * X / (s + 1)
+end
+
 function _int(u::Sym, depth::Int)
     depth > MAXDEPTH[] && throw(GiveUp(u))
     time() > _DEADLINE[] && throw(TimedOut())
@@ -235,6 +253,10 @@ function _int(u::Sym, depth::Int)
     # a constant integrand: Int[a, x] = a*x. RUBI's rule for it is in the older "9.1
     # Integrand simplification rules", which its load order leaves out.
     SymJ.has(u, X) || return u * X
+    # x^m (c x)^n: SymJ writes (c x)^(m + n) so, with c^m taken out (RUBI keeps it whole:
+    # its 1.4.1 rule Int[v^m (b v)^n] := 1/b^m Int[(b v)^(m + n)] then comes back here)
+    w = _monomial_int(u)
+    w === nothing || return w
     any(v -> isequal(v, u), _STACK) && throw(Cycle())
     R = _RULESET[]::RuleSet
     old = _DEPTH[]

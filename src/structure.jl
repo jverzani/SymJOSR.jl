@@ -343,7 +343,9 @@ end
 _has_imaginary(e::Sym) = has(e, Sym(im)) || (e.kind == SymJ.NUMBER && !iszero(imag(e.num))) ||
     ((e.kind == SymJ.ADD || e.kind == SymJ.MUL) && !iszero(imag(e.num))) ||
     any(_has_imaginary, e.args) || any(_has_imaginary, e.exps)
-FUNCS["ActivateTrig"] = u -> _activate_hyperbolic(_unshift(_s(u)))
+# ActivateTrig stays as in utilities.jl, the identity: rules apply it to a part of their
+# result only (4.3.7 #15: ActivateTrig[u] (b tan^n)^p ...), so shifting back there would
+# leave tan(v + π/2) and cot(v) side by side; _tidy_result shifts the answer back.
 
 # FunctionOfTrig[u, v, x]: the common linear argument (up to a rational factor) of the
 # trig and hyperbolic functions in u, :null when there are none, false when x appears

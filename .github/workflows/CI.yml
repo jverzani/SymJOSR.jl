@@ -51,7 +51,21 @@ jobs:
       # (also keeps the scratch space, so the OSR rule data is not downloaded every run)
       - uses: julia-actions/cache@v3
       - uses: julia-actions/julia-buildpkg@v1
-      # the tests download the OSR Integration rules from GitHub on first use
+      # the tests download the OSR Integration rules from GitHub on first use; a copy the
+      # cache brought back is downloaded again when OSR's main has moved on (without this,
+      # CI tested the rules of the first cached run)
+      - name: Refresh the OSR rules
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          depot="${JULIA_DEPOT_PATH%%[:;]*}"
+          d="${depot:-$HOME/.julia}/scratchspaces/e79e1aeb-f1e6-4c79-b7b9-f0872eb2a392/integration/main"
+          remote=$(curl -fsSL -H "Accept: application/vnd.github.sha" -H "Authorization: Bearer $GH_TOKEN" \
+            https://api.github.com/repos/OpenSymbolicRules/Integration/commits/main || true)
+          cached=$(cat "$d/.symjosr-sha" 2>/dev/null || true)
+          echo "OSR main: ${remote:-unknown}; cached: ${cached:-none}"
+          if [ -n "$remote" ] && [ "$remote" != "$cached" ]; then rm -rf "$d"; echo "stale copy removed"; fi
       - uses: julia-actions/julia-runtest@v1
         with:
           # no coverage on 1.12, as in SymJ: precompiling SymJ for the coverage
