@@ -126,7 +126,7 @@ const RUBI_LOAD_ORDER = filter!(l -> !isempty(l) && !startswith(l, '#'),
     readlines(joinpath(@__DIR__, "rubi_load_order.txt")))
 
 # a path relative to root with / as separator on every system: rule files are named
-# this way (HOST_RULES, the `files` filters), and relpath gives \ on Windows
+# this way (HOST_MISSING, the `files` filters), and relpath gives \ on Windows
 _relpath(p, root) = replace(relpath(p, root), '\\' => '/')
 
 """
@@ -170,7 +170,6 @@ function load_rules(; files = nothing, reload::Bool = false)
         data = JSON.parsefile(joinpath(dir, "rules", f))
         rs, a = _apply_errata(data["rules"], f, get(data, "identity", nothing), recs)
         append!(applied, a)
-        isempty(rs) && haskey(HOST_RULES, f) && (rs = HOST_RULES[f])
         if haskey(HOST_MISSING, f)
             have = JSON.json(rs)
             extra = [r for r in HOST_MISSING[f] if !occursin("\"" * r["head"] * "\"", have)]

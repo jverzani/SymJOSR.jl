@@ -45,17 +45,8 @@ FUNCS["IntTerm"] = (u, x) -> _intterm(_s(u))
 
 # ---- host rules: stopgaps for RUBI rules the OSR data does not have yet
 #
-# Each entry stands in for an OSR rule file that is empty (OSR known issue 3) and is
-# used only while that file has no rules. The rules are written in OSR's own JSON form,
-# so they go through the same loader as the data.
-
-const HOST_RULES = Dict{String,Vector{Any}}(
-    # 1.4.1: Int[u_, x_Symbol] := IntSum[u, x] /; SumQ[u]
-    "1-algebraic/1.4-miscellaneous/1.4.1-Algebraic-function-simplification.json" => Any[
-        Dict{String,Any}("id" => 1, "pattern" => Any["Int", "u_", "x_symbol"],
-            "constraints" => Any[Any["SumQ", "u"]], "result" => Any["IntSum", "u", "x"]),
-    ],
-)
+# The rules are written in OSR's own JSON form, so they go through the same loader as
+# the data.
 
 # Rules of RUBI 4.16.1 that OSR leaves out of files that are not empty (rules wrapped in
 # If[TrueQ[$LoadShowSteps], ...], rules with With). Each is put first in its file ("at" =>
