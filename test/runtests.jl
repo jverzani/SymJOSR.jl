@@ -258,3 +258,23 @@ end
     @test !S._verify(f(X)^2, fp * f(X))
     @test S._verify(f(X)^2 / 2, fp * f(X))
 end
+
+@testset "fractional powers of linears" begin
+    R = S.load_rules()
+    X = S.X
+    F = S.FUNCS
+    # SubstForFractionalPowerOfLinear: {v, n, a + b x, c}, Int[u] = n c Subst[Int[v], x, (a + b x)^(1/n)]
+    l = F["SubstForFractionalPowerOfLinear"](1 / (4 - X + sqrt(4 - X)), X)
+    @test isequal(l[1], 1 / (X + 1)) && l[2] == 2 && isequal(l[3], 4 - X) && l[4] == -1
+    @test F["SubstForFractionalPowerOfLinear"](sqrt(1 + X^2), X) === false
+    @test S._qol_parts((1 + X) / (1 - X), X) == (1, 1, 1, -1)
+    @test S._qol_parts(2 + 1 / (X + 3), X) == (7, 2, 3, 1)
+    @test S._qol_parts(sqrt(X), X) === nothing
+    @test !F["TryPureTanSubst"](atan(2 * tan(3 * X)), X) && F["TryPureTanSubst"](atan(X), X)
+    # Apostol #19 and #114 (u = x^2, then a root of a linear function), and others
+    for u in (X / sqrt((X^2 + 1)^(3 // 2) + X^2 + 1), X / (4 - X^2 + sqrt(4 - X^2)),
+              1 / (sqrt(X) + X^(1 // 3)), 1 / (X * sqrt((1 + X) / (1 - X))))
+        r = S.integrate(u, X; rules = R)
+        @test r !== nothing && S._verify(r, u)
+    end
+end
