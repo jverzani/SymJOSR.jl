@@ -22,6 +22,7 @@ using SymJ: Sym, subs
 import CodecZlib, Downloads, JSON, Random, Scratch, Tar
 
 include("fetch.jl")
+include("errata.jl")
 include("osr.jl")
 include("heads.jl")
 include("predicates.jl")
