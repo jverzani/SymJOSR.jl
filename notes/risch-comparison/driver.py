@@ -10,7 +10,7 @@ if os.path.exists(out):
         a = l.split('\t')
         if a[0] == 'RISCH': done.add(a[1] + '\t' + a[2])
 todo = [p for p in todo if p not in done]
-fo = open(out, 'a')
+out_file = open(out, 'a')
 def start():
     p = subprocess.Popen(['julia', '+1.13.4', '--heap-size-hint=4G', '--project=' + here, os.path.join(here, 'worker.jl')],
                          stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True, bufsize=1)
@@ -30,9 +30,9 @@ for item in todo:
         l = readline(p, limit)
         if l is None or l == '':
             f, i = item.split('\t')
-            if not got_osr: fo.write(f'OSR\t{f}\t{i}\ttimeout\t{time.time()-t0:.3f}\t0\t0\tkilled\n')
-            fo.write(f'RISCH\t{f}\t{i}\ttimeout\t{limit}\t0\t0\tkilled\n'); fo.flush()
+            if not got_osr: out_file.write(f'OSR\t{f}\t{i}\ttimeout\t{time.time()-t0:.3f}\t0\t0\tkilled\n')
+            out_file.write(f'RISCH\t{f}\t{i}\ttimeout\t{limit}\t0\t0\tkilled\n'); out_file.flush()
             p.kill(); p.wait(); p = start(); break
-        if l.startswith('OSR'): got_osr = True; fo.write(l); fo.flush()
-        elif l.startswith('RISCH'): fo.write(l); fo.flush(); break
+        if l.startswith('OSR'): got_osr = True; out_file.write(l); out_file.flush()
+        elif l.startswith('RISCH'): out_file.write(l); out_file.flush(); break
 p.stdin.close(); p.wait()
