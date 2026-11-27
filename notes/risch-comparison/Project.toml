@@ -1,0 +1,9 @@
+[deps]
+JSON = "682c06a0-de6a-54ab-a142-c8b1cf79cde6"
+RischIntegrate = "c180fd1b-065d-41df-ac4d-d8d9562c1957"
+SymJ = "73a6d648-42a5-483e-b8b5-fc71c1696ef5"
+SymJOSR = "e79e1aeb-f1e6-4c79-b7b9-f0872eb2a392"
+
+[sources]
+SymJ = {rev = "main", url = "https://github.com/jverzani/SymJ.jl"}
+SymJOSR = {path = "../.."}
