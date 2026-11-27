@@ -371,3 +371,19 @@ end
     t = @elapsed st = S._check(u, R, 2.0)[1]
     @test st === :timeout && t < 30
 end
+
+@testset "PiecewiseLinearQ and FunctionOfLinear" begin
+    R = S.load_rules()
+    X = S.X
+    F = S.FUNCS
+    @test F["PiecewiseLinearQ"](log(c * exp(a + b * X)), X) && F["PiecewiseLinearQ"](atan(tan(2X)), X)
+    @test !F["PiecewiseLinearQ"](log(X), X) && F["PiecewiseLinearQ"](a + b * X, atanh(coth(X)), X)
+    # {f(x), a, b} for u = f(a + b x)
+    l = F["FunctionOfLinear"](sqrt(2X + 1) + (4X + 2)^2, X)
+    @test isequal(l[1], 4X^2 + sqrt(X)) && l[2] == 1 && l[3] == 2
+    @test F["FunctionOfLinear"](X * sin(X), X) === false && F["FunctionOfLinear"](sin(X), X) === false
+    for u in (X * atan(tan(a + b * X)), atanh(tanh(X))^2, 1 / (sqrt(2X + 1) + (2X + 1)), exp(2X + 1) / (1 + exp(2X + 1))^2)
+        r = S.integrate(u, X; rules = R)
+        @test r !== nothing && S._verify(r, u)
+    end
+end
