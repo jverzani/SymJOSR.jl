@@ -290,10 +290,7 @@ An antiderivative of `f` in `x` by the RUBI rules, or `nothing` when they do not
 one. With `trace = true`, a named tuple of the result and the rules applied, in order.
 """
 function integrate(f, x::Sym; rules::RuleSet = load_rules(), trace::Bool = false)
-    # (not subs(f, X => X) when x is X: SymJ's subs makes Derivative(f(X), X) the
-    # derivative at the point X, f'(X), which 9.1's patterns do not match)
-    same = isequal(x, X)
-    g = same ? _s(f) : subs(_s(f), x => X)
+    g = subs(_s(f), x => X)
     oldR, oldT = _RULESET[], _TRACE[]
     _RULESET[] = rules
     steps = OSRRule[]
@@ -306,7 +303,7 @@ function integrate(f, x::Sym; rules::RuleSet = load_rules(), trace::Bool = false
     finally
         _RULESET[], _TRACE[] = oldR, oldT
     end
-    v = v === nothing || _has_int(v) ? nothing : (same ? _tidy_result(v) : subs(_tidy_result(v), X => x))
+    v = v === nothing || _has_int(v) ? nothing : subs(_tidy_result(v), X => x)
     trace ? (result = v, steps = steps) : v
 end
 
