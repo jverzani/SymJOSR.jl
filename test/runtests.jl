@@ -387,3 +387,23 @@ end
         @test r !== nothing && S._verify(r, u)
     end
 end
+
+@testset "NormalizeIntegrand" begin
+    R = S.load_rules()
+    X = S.X
+    NI = S.FUNCS["NormalizeIntegrand"]
+    @test any(r -> endswith(r.file, "9.3-Miscellaneous-integration-rules.json") && r.id == 67, R.rules)
+    # like powers of x collected; the least power of x taken out of a sum of monomials
+    @test isequal(NI(1 / (a * X^m + b * X^m)^3, X), 1 / ((a + b)^3 * X^(3m)))
+    @test isequal(NI((a * X^2 + b * X^3)^2, X), X^4 * (a + b * X)^2)
+    # powers of proportional linear factors merged; a sum that is not a polynomial factored
+    v = NI((2X + 2)^2 * (X + 1)^3, X)          # one power of a linear factor
+    @test v.kind == SymJ.MUL && length(v.args) == 1 && iszero(expand(v - 4 * (X + 1)^5))
+    @test isequal(NI(sin(X)^2 / (sin(X) + sin(X)^2), X), sin(X) / (1 + sin(X)))
+    # unchanged: u itself
+    @test isequal(NI((X - 1)^2 / X, X), (X - 1)^2 / X)
+    for u in (1 / (a * X^m + b * X^m)^3, sin(X)^2 / (sin(X) + sin(X)^2))
+        r = S.integrate(u, X; rules = R)
+        @test r !== nothing && S._verify(r, u)
+    end
+end
