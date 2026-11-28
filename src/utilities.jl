@@ -120,7 +120,6 @@ FUNCS["ExpandIntegrand"] = function (as...)
 end
 FUNCS["ExpandToSum"] = (as...) -> expand(length(as) == 3 ? _s(as[1]) * _s(as[2]) : _s(as[1]))
 FUNCS["ExpandTrig"] = (as...) -> expand(length(as) == 3 ? _s(as[1]) * _s(as[2]) : _s(as[1]))
-FUNCS["ExpandTrigReduce"] = FUNCS["ExpandTrig"]
 
 function _is_rational_in_x(e::Sym)
     k = e.kind

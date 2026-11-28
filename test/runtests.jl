@@ -407,3 +407,21 @@ end
         @test r !== nothing && S._verify(r, u)
     end
 end
+
+@testset "TrigReduce and ExpandTrigReduce" begin
+    R = S.load_rules()
+    X = S.X
+    T = S.FUNCS["TrigReduce"]
+    same(u, v) = abs(ComplexF64(N(subs(u - v, X => 0.37, a => 0.6, b => 1.3)))) < 1e-12
+    @test isequal(T(sin(X)^3), 3 * sin(X) / 4 - sin(3X) / 4)
+    @test isequal(T(sin(X)^2 * cos(X)^2), 1 // 8 - cos(4X) / 8)
+    for u in (cos(a + b * X)^3, sin(X) * cos(2X), sinh(X)^3, cosh(a + b * X)^2 * sinh(a + b * X))
+        @test same(T(u), u)
+    end
+    @test isequal(T(X * sin(X)), X * sin(X))                 # one factor to the first power: unchanged
+    # x^m sin(a + b x)^n by 4.1.10 and 6.1.3, term by term to Si and Ci
+    for u in (cos(X)^3 / X, sin(a + b * X)^2 / X, cos(X)^3 * sin(X)^2 / X, sinh(X)^3 / X)
+        r = S.integrate(u, X; rules = R)
+        @test r !== nothing && S._verify(r, u)
+    end
+end

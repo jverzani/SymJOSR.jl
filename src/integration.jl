@@ -84,6 +84,25 @@ function _unknown!(out, n, slots)
     out
 end
 
+# In Mathematica a product never has one base twice (Sin[x] Sin[x] is Sin[x]^2), so a
+# pattern u. Sin[a. + b. x]^m. Sin[c. + d. x]^n. (4.7.9 #92) needs two different sines.
+# SymJ's matcher splits sin(x)^2 into sin(x)^1 sin(x)^1; the rule then applies where
+# RUBI's does not. The pairs of factors of a product pattern with the same function head,
+# as expressions in the rule's names, whose values must differ.
+_unslot(n) = n isa AbstractString ? (w = wildcard(n); w === nothing ? n : string(w[1])) :
+             n isa AbstractVector ? Any[_unslot(a) for a in n] : n
+function _repeated_bases(p)
+    (isapp(p) && head(p) == "Multiply") || return Tuple{Any,Any}[]
+    base(n) = isapp(n) && head(n) == "Power" ? base(n[2]) : n
+    fs = [base(a) for a in args(p)]
+    fn(n) = isapp(n) && !(head(n) in ("Add", "Multiply", "Power", "Rational", "Complex")) && wildcard(head(n)) === nothing
+    out = Tuple{Any,Any}[]
+    for i in eachindex(fs), j in i+1:length(fs)
+        fn(fs[i]) && fn(fs[j]) && head(fs[i]) == head(fs[j]) && push!(out, (_unslot(fs[i]), _unslot(fs[j])))
+    end
+    out
+end
+
 function _mkrule(file, r)
     p = r["pattern"]
     (isapp(p) && head(p) == "Int" && length(p) == 3) || throw(OSRError("pattern is not Int[u, x]"))
@@ -95,6 +114,7 @@ function _mkrule(file, r)
     cons, res = r["constraints"], r["result"]
     holder = Ref{OSRRule}()
     derived = occursin("∂", string(pe))         # Derivative[n_][f_][x_] slots
+    dups = _repeated_bases(p[2])
     rhs = function (d)
         _check_deadline()                          # once per candidate match
         if derived
@@ -103,6 +123,9 @@ function _mkrule(file, r)
         end
         c = Ctx(d, _DEPTH[])
         guards_hold(cons, c) || return nothing
+        for (b1, b2) in dups
+            (try isequal(_s(ev(b1, c)), _s(ev(b2, c))) catch; false end) && return nothing
+        end
         DEBUG[] && println("  "^_DEPTH[], "[", _DEPTH[], "] ", holder[].file, " #", holder[].id)
         v = try
             ev(res, c)
