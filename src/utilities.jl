@@ -8,7 +8,9 @@ using SymJ: expand, cancel, apart, subs
 # giving up: Unintegrable[u, x] and CannotIntegrate[u, x] stop the integration
 struct GiveUp <: Exception
     integrand::Any
+    limit::Bool               # the depth limit, which stops the whole integration
 end
+GiveUp(u) = GiveUp(u, false)
 
 FUNCS["Unintegrable"] = (u, x) -> throw(GiveUp(u))
 FUNCS["CannotIntegrate"] = (u, x) -> throw(GiveUp(u))
