@@ -455,3 +455,21 @@ end
     u = (c + d * X) * csch(a + b * X)
     @test first(S._check(u, S.load_rules(), 30.0; expected = e)) === :verified
 end
+
+@testset "trig products in Mathematica's form" begin
+    R = S.load_rules()
+    X = S.X
+    T = S._trig_canonical
+    # a function with its reciprocal, and sin/cos ratios, as Mathematica evaluates them
+    @test isequal(T(1 / csc(X)), sin(X)) && isequal(T(csc(X) * sin(X)^2), sin(X))
+    @test isequal(T(cos(X) * tan(X)), sin(X)) && isequal(T(sin(X) / cos(X)), tan(X))
+    @test isequal(T(sin(X)^2 / cos(X)^3), sec(X) * tan(X)^2) && isequal(T(1 / sin(X)^2), csc(X)^2)
+    @test isequal(T(cosh(X) * tanh(X)), sinh(X)) && isequal(T(sinh(X) * csch(X)^3), csch(X)^2)
+    # left alone: one function to a positive power, a non-integer power, different arguments
+    @test isequal(T(tan(X)^2), tan(X)^2) && isequal(T(sqrt(sin(X)) / cos(X)), sec(X) * sqrt(sin(X)))
+    @test isequal(T(sin(X) * csc(2X)), sin(X) * csc(2X))
+    for u in (1 / csc(X), csc(X) * sin(X)^2, cot(X)^2 / csc(X), cos(X)^2 * tan(X), csch(X)^3 * sinh(X))
+        r = S.integrate(u, X; rules = R)
+        @test r !== nothing && S._verify(r, u)
+    end
+end
