@@ -107,11 +107,17 @@ function _mkrule(file, r)
         v = try
             ev(res, c)
         catch err
+            # Unintegrable in a sub-integral: this rule does not lead to an antiderivative,
+            # and the next is tried (RUBI commits to a rule once it applies; here one
+            # branch's failure, a cycle among rules for instance, would stop the whole
+            # integration while another rule could do it)
+            err isa GiveUp && !err.limit && return nothing
             (err isa GiveUp || err isa TimedOut) && rethrow()
             err isa InterruptException && rethrow()
             return nothing
         end
         v isa Sym || v isa Number || return nothing
+        v isa Sym && _has_int(v) && return nothing      # a sub-integral left: likewise
         t = _TRACE[]
         t === nothing || push!(t, holder[])
         v
@@ -249,7 +255,7 @@ function _monomial_int(u::Sym)
 end
 
 function _int(u::Sym, depth::Int)
-    depth > MAXDEPTH[] && throw(GiveUp(u))
+    depth > MAXDEPTH[] && throw(GiveUp(u, true))
     _check_deadline()
     # constant factors outside: Int[a*u] = a*Int[u]. RUBI's results keep them outside
     # (Star[a, Int[u, x]]), so its rules never see one; SymJ's canonical form puts them
