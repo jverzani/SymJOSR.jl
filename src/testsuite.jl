@@ -187,7 +187,6 @@ end
 # sec(i u) = sech(u), csc(i u) = -i csch(u), for u free of i
 const _IMAG_HYP = Dict(:sin => (:sinh, 1), :cos => (:cosh, 0), :tan => (:tanh, 1),
                        :cot => (:coth, -1), :sec => (:sech, 0), :csc => (:csch, -1))
-_negroot(b::Sym, e::Sym) = _isrational(b) && _rat(b) < 0 && _isrational(e) && !_isinteger(e)
 _has_i(u::Sym) = !isreal(u.num) || (u.kind == SymJ.ADD && !all(isreal, u.coefs)) ||
     (u.kind == SymJ.POW && _negroot(u.args[1], u.args[2])) ||
     (u.kind == SymJ.MUL && any(((b, k),) -> _negroot(b, k), zip(u.args, u.exps))) ||
