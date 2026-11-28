@@ -124,7 +124,7 @@ function test_problems(; files, rules::RuleSet = load_rules(), timeout::Real = 5
         for t in JSON.parsefile(joinpath(d, f))["tests"]
             status, u, r = :skipped, nothing, nothing
             if t["variable"] == "x"
-                status, u, r = _run_problem(t["expression"], rules, timeout)
+                status, u, r = _run_problem(t["expression"], rules, timeout; expected = get(t, "expected_result", nothing))
             end
             counts[status] += 1
             push!(out, (file = rel, id = t["id"], status = status, integrand = u, result = r))
@@ -134,19 +134,22 @@ function test_problems(; files, rules::RuleSet = load_rules(), timeout::Real = 5
     (counts = counts, problems = out)
 end
 
-function _run_problem(expr, rules, timeout)
+function _run_problem(expr, rules, timeout; expected = nothing)
     u = try
         read_osr(expr)
     catch
         return (:error, nothing, nothing)
     end
-    _check(u, rules, timeout)
+    e = expected === nothing ? nothing : (try read_osr(expected) catch; nothing end)
+    _check(u, rules, timeout; expected = e isa Sym ? e : nothing)
 end
 
 # integrate u (in the integration variable X) with the rules, within timeout seconds, and
 # check the answer: (status, u, result), status one of :verified, :wrong, :unevaluated,
-# :timeout, :error
-function _check(u::Sym, rules, timeout)
+# :timeout, :error. With an expected antiderivative (the test problem's), an answer that
+# differs from it by a constant is verified (_formal_match); otherwise, or when that is
+# not shown, the answer's derivative is compared with u numerically (_verify).
+function _check(u::Sym, rules, timeout; expected::Union{Sym,Nothing} = nothing)
     oldR, oldT, oldD = _RULESET[], _TRACE[], _DEADLINE[]
     _RULESET[], _TRACE[], _DEADLINE[] = rules, nothing, time() + timeout
     r = try
@@ -159,6 +162,45 @@ function _check(u::Sym, rules, timeout)
         _RULESET[], _TRACE[], _DEADLINE[] = oldR, oldT, oldD
     end
     (r === nothing || _has_int(r)) && return (:unevaluated, u, r)
-    ok = try _verify(r, u) catch; false end
+    ok = expected !== nothing && (try _formal_match(r, expected) catch; false end)
+    ok || (ok = try _verify(r, u) catch; false end)
     (ok ? :verified : :wrong, u, r)
+end
+
+# r and e differ by a constant, shown symbolically: r == e, or r - e is free of x after
+# expansion, after trig functions of an imaginary argument are written as hyperbolic ones
+# (Mathematica's automatic Cot[I u] = -I Coth[u]: RUBI's answers have the hyperbolic
+# form), after cancellation, or its derivative expands to 0. RUBI's expected answers
+# (atanh(exp(a + b x)), polylogs of exp(a + b x), …) can fail the numeric check, whose
+# points fall on their branch cuts; an answer equal to one of them up to a constant is as
+# good as RUBI's. (No simplify: on AppellF1 answers with fractional powers it took
+# minutes, and can not be interrupted.)
+function _formal_match(r::Sym, e::Sym)
+    isequal(r, e) && return true
+    t = expand(r - e); has(t, X) || return true
+    t = expand(_imag_to_hyp(r) - _imag_to_hyp(e)); has(t, X) || return true
+    t = cancel(t); has(t, X) || return true
+    iszero(expand(diff(t, X)))
+end
+
+# sin(i u) = i sinh(u), cos(i u) = cosh(u), tan(i u) = i tanh(u), cot(i u) = -i coth(u),
+# sec(i u) = sech(u), csc(i u) = -i csch(u), for u free of i
+const _IMAG_HYP = Dict(:sin => (:sinh, 1), :cos => (:cosh, 0), :tan => (:tanh, 1),
+                       :cot => (:coth, -1), :sec => (:sech, 0), :csc => (:csch, -1))
+_negroot(b::Sym, e::Sym) = _isrational(b) && _rat(b) < 0 && _isrational(e) && !_isinteger(e)
+_has_i(u::Sym) = !isreal(u.num) || (u.kind == SymJ.ADD && !all(isreal, u.coefs)) ||
+    (u.kind == SymJ.POW && _negroot(u.args[1], u.args[2])) ||
+    (u.kind == SymJ.MUL && any(((b, k),) -> _negroot(b, k), zip(u.args, u.exps))) ||
+    any(_has_i, u.args) || any(_has_i, u.exps)
+function _imag_to_hyp(u::Sym)
+    isempty(u.args) && return u
+    v = SymJ._rw_parts(_imag_to_hyp, u)
+    if v.kind == SymJ.FN && haskey(_IMAG_HYP, v.name) && length(v.args) == 1
+        w = expand(v.args[1] / Sym(im))
+        if !_has_i(w)
+            h, k = _IMAG_HYP[v.name]
+            return Sym(im)^k * apply_function(h, Sym[w])
+        end
+    end
+    v
 end
