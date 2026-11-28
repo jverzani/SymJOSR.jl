@@ -124,7 +124,7 @@ function test_problems(; files, rules::RuleSet = load_rules(), timeout::Real = 5
         for t in JSON.parsefile(joinpath(d, f))["tests"]
             status, u, r = :skipped, nothing, nothing
             if t["variable"] == "x"
-                status, u, r = _run_problem(t["expression"], rules, timeout)
+                status, u, r = _run_problem(t["expression"], rules, timeout; expected = get(t, "expected_result", nothing))
             end
             counts[status] += 1
             push!(out, (file = rel, id = t["id"], status = status, integrand = u, result = r))
@@ -134,19 +134,22 @@ function test_problems(; files, rules::RuleSet = load_rules(), timeout::Real = 5
     (counts = counts, problems = out)
 end
 
-function _run_problem(expr, rules, timeout)
+function _run_problem(expr, rules, timeout; expected = nothing)
     u = try
         read_osr(expr)
     catch
         return (:error, nothing, nothing)
     end
-    _check(u, rules, timeout)
+    e = expected === nothing ? nothing : (try read_osr(expected) catch; nothing end)
+    _check(u, rules, timeout; expected = e isa Sym ? e : nothing)
 end
 
 # integrate u (in the integration variable X) with the rules, within timeout seconds, and
 # check the answer: (status, u, result), status one of :verified, :wrong, :unevaluated,
-# :timeout, :error
-function _check(u::Sym, rules, timeout)
+# :timeout, :error. With an expected antiderivative (the test problem's), an answer that
+# differs from it by a constant is verified (_formal_match); otherwise, or when that is
+# not shown, the answer's derivative is compared with u numerically (_verify).
+function _check(u::Sym, rules, timeout; expected::Union{Sym,Nothing} = nothing)
     oldR, oldT, oldD = _RULESET[], _TRACE[], _DEADLINE[]
     _RULESET[], _TRACE[], _DEADLINE[] = rules, nothing, time() + timeout
     r = try
@@ -159,6 +162,23 @@ function _check(u::Sym, rules, timeout)
         _RULESET[], _TRACE[], _DEADLINE[] = oldR, oldT, oldD
     end
     (r === nothing || _has_int(r)) && return (:unevaluated, u, r)
-    ok = try _verify(r, u) catch; false end
+    ok = expected !== nothing && (try _formal_match(r, expected) catch; false end)
+    ok || (ok = try _verify(r, u) catch; false end)
     (ok ? :verified : :wrong, u, r)
+end
+
+# r and e differ by a constant, shown symbolically: r == e, r - e simplifies to an
+# expression free of x, or its derivative simplifies to 0. RUBI's expected answers
+# (atanh(exp(a + b x)), polylogs of exp(a + b x), …) can fail the numeric check, whose
+# points fall on their branch cuts; an answer equal to one of them up to a constant is as
+# good as RUBI's. (SymJ's simplify can not be interrupted: differences too large for it
+# to be quick are left to the numeric check.)
+const FORMAL_LEAVES = 400
+function _formal_match(r::Sym, e::Sym)
+    isequal(r, e) && return true
+    t = expand(r - e)
+    has(t, X) || return true
+    leafcount(t) <= FORMAL_LEAVES || return false
+    has(SymJ.simplify(t), X) || return true
+    iszero(SymJ.simplify(diff(t, X)))
 end

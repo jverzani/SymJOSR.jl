@@ -407,3 +407,18 @@ end
         @test r !== nothing && S._verify(r, u)
     end
 end
+
+@testset "formal check against the expected answer" begin
+    X = S.X
+    # RUBI's ∫ (c + d x) csch(a + b x): its form fails the numeric check (atanh(exp(a + b x))
+    # and polylogs of exp(a + b x) on their branch cuts), and matches the expected answer
+    e = (-2d * X - 2c) * atanh(exp(b * X + a)) / b - d * S.FUNCS["PolyLog"](2, -exp(b * X + a)) / b^2 +
+        d * S.FUNCS["PolyLog"](2, exp(b * X + a)) / b^2
+    r = -2 * atanh(exp(b * X + a)) * d * X / b - 2 * atanh(exp(b * X + a)) * c / b -
+        d * S.FUNCS["PolyLog"](2, -exp(b * X + a)) / b^2 + d * S.FUNCS["PolyLog"](2, exp(b * X + a)) / b^2
+    @test S._formal_match(r, e) && S._formal_match(r + 3, e)      # up to a constant
+    @test !S._formal_match(r + X, e)
+    @test S._formal_match(sin(X)^2, -cos(X)^2)
+    u = (c + d * X) * csch(a + b * X)
+    @test first(S._check(u, S.load_rules(), 30.0; expected = e)) === :verified
+end
