@@ -298,17 +298,25 @@ function _int(u::Sym, depth::Int)
     R = _RULESET[]::RuleSet
     old = _DEPTH[]
     _DEPTH[] = depth
+    # Mathematica's automatic forms of products of trig functions (1/csc(x) is sin(x),
+    # csc(x) sin(x)^2 is sin(x), cos(x) tan(x) is sin(x)), which RUBI's rules expect, are
+    # tried only when the rules give up on u itself (9.3 #1, Unintegrable[u, x]): SymJ's
+    # sin/cos forms are what many rules match (1/sin(x) as csc(x) everywhere lost 66 problems)
+    v = _trig_canonical(u)
     push!(_STACK, u)
     try
         for r in R.rules
             _check_deadline()                      # once per rule tried
-            v = r.rule(u)
-            v === nothing || return _s(v)
+            w = r.rule(u)
+            w === nothing || return _s(w)
         end
+    catch err
+        (err isa GiveUp && !isequal(v, u) && isequal(_s(err.integrand), u)) || rethrow()
     finally
         _DEPTH[] = old
         pop!(_STACK)
     end
+    isequal(v, u) || return _int(v, depth + 1)
     _inert_int(u)
 end
 
