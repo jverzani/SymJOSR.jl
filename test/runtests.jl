@@ -407,3 +407,17 @@ end
         @test r !== nothing && S._verify(r, u)
     end
 end
+
+@testset "Complex in patterns, ComplexFreeQ" begin
+    R = S.load_rules()
+    X = S.X
+    C = S.FUNCS["ComplexFreeQ"]
+    @test C(a * X + 2) && C(sqrt(Sym(2))) && !C(im * b) && !C(sin(2im * X)) && !C(sqrt(Sym(-3)))
+    # the 4.1.10 rules with Complex[0, fz_] in their patterns load
+    @test !any(s -> occursin("Complex", s.reason), R.skipped)
+    # and give RUBI's forms: ∫ sin(i b x)/x = i Shi(b x), not Si(i b x)
+    for (u, h) in ((sin(im * b * X) / X, :sinhint), (sin(im * b * X + im * a) / (b * X + a), :sinhint))
+        r = S.integrate(u, X; rules = R)
+        @test r !== nothing && S._verify(r, u) && occursin(string(h), string(r))
+    end
+end
