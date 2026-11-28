@@ -164,6 +164,7 @@ function _check(u::Sym, rules, timeout; expected::Union{Sym,Nothing} = nothing)
     (r === nothing || _has_int(r)) && return (:unevaluated, u, r)
     ok = expected !== nothing && (try _formal_match(r, expected) catch; false end)
     ok || (ok = try _verify(r, u) catch; false end)
+    ok || (ok = expected !== nothing && (try _const_diff(r, expected, u) catch; false end))
     (ok ? :verified : :wrong, u, r)
 end
 
@@ -178,7 +179,7 @@ end
 function _formal_match(r::Sym, e::Sym)
     isequal(r, e) && return true
     t = expand(r - e); has(t, X) || return true
-    t = expand(_imag_to_hyp(r) - _imag_to_hyp(e)); has(t, X) || return true
+    t = expand(_imag_to_hyp(_unshift(r)) - _imag_to_hyp(_unshift(e))); has(t, X) || return true
     t = cancel(t); has(t, X) || return true
     iszero(expand(diff(t, X)))
 end
@@ -202,5 +203,45 @@ function _imag_to_hyp(u::Sym)
             return Sym(im)^k * apply_function(h, Sym[w])
         end
     end
+    # the integrals: Ci(i w) = Chi(w) + iπ/2 (Re w > 0), Si(i w) = i Shi(w), Chi(i w) =
+    # Ci(w) + iπ/2, Shi(i w) = i Si(w)
+    if v.kind == SymJ.FN && v.name in (:cosint, :sinint, :coshint, :sinhint) && length(v.args) == 1
+        w = expand(v.args[1] / Sym(im))
+        if !_has_i(w)
+            v.name === :cosint && return apply_function(:coshint, Sym[w]) + Sym(im) * SymJ.PI / 2
+            v.name === :sinint && return Sym(im) * apply_function(:sinhint, Sym[w])
+            v.name === :coshint && return apply_function(:cosint, Sym[w]) + Sym(im) * SymJ.PI / 2
+            return Sym(im) * apply_function(:sinint, Sym[w])
+        end
+    end
     v
+end
+
+# r - e is the same at several values of x (the parameters fixed), numerically: for
+# answers that evaluate, in forms the formal check does not relate to RUBI's (erf of
+# (-1)^(1/4) z where RUBI has Fresnel integrals), and whose derivative fails the
+# numeric check. Values as in _verify, n/997 in (0.3, 1.7), for two choices of the
+# parameters, four values of x each.
+function _const_diff(r::Sym, e::Sym, u::Sym; params = 2, xs = 4)
+    r, e = last(_concrete_functions(u, r)), last(_concrete_functions(u, e))   # u's unknown functions
+    d = r - e
+    syms = sort!(collect(setdiff(SymJ.free_symbols(d), Set([X]))); by = string)
+    rng = Random.Xoshiro(hash(string(e)))
+    sets = 0
+    for _ in 1:4params
+        ps = [s => Sym(Float64(v) / 997) for (s, v) in zip(syms, Random.randperm(rng, 1400)[1:length(syms)] .+ 299)]
+        vals = ComplexF64[]
+        for _ in 1:4xs
+            xv = Sym(Float64(rand(rng, 300:1700)) / 997)
+            rv = try SymJ._evalc(subs(r, ps..., X => xv)) catch; continue end
+            ev_ = try SymJ._evalc(subs(e, ps..., X => xv)) catch; continue end
+            rv isa Number && ev_ isa Number && isfinite(rv) && isfinite(ev_) || continue
+            dv = rv - ev_
+            isempty(vals) || abs(dv - vals[1]) <= 1e-8 * (1 + abs(rv) + abs(ev_)) || return false
+            push!(vals, dv)
+            length(vals) == xs && break
+        end
+        length(vals) == xs && (sets += 1) == params && return true
+    end
+    false
 end

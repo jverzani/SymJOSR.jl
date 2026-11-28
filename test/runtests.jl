@@ -454,4 +454,16 @@ end
     @test S._formal_match((X + 1) * (X - 1) / (X^2 - 1) + log(X), log(X))
     u = (c + d * X) * csch(a + b * X)
     @test first(S._check(u, S.load_rules(), 30.0; expected = e)) === :verified
+    # Ci(i w) = Chi(w) + iπ/2, Si(i w) = i Shi(w), and π/2 shifts (7.3.4 #483's answer)
+    ci(z) = SymJ.apply_function(:cosint, Sym[z]); chi(z) = SymJ.apply_function(:coshint, Sym[z])
+    si(z) = SymJ.apply_function(:sinint, Sym[z]); shi(z) = SymJ.apply_function(:sinhint, Sym[z])
+    @test S._formal_match(5 * ci(3im * atanh(a * X)) / 16 + ci(im * atanh(a * X)) / 8, 5 * chi(3atanh(a * X)) / 16 + chi(atanh(a * X)) / 8)
+    @test S._formal_match(im * si(im * b * X) + sin(a * X + SymJ.PI / 2), -shi(b * X) + cos(a * X))
+    @test !S._formal_match(ci(im * b * X), shi(b * X))
+    # r - e the same at several x, numerically: erf of (-1)^(1/4) z for Fresnel (5.2.2 #82's kind)
+    w = sqrt(asin(a * X)); ω = Sym(-1)^(1 // 4)
+    fs(z) = SymJ.apply_function(:fresnels, Sym[z]); erfi(z) = SymJ.apply_function(:erfi, Sym[z])
+    r = ω * sqrt(Sym(π)) * (SymJ.apply_function(:erf, Sym[ω * w]) - erfi(ω * w)) / 2
+    @test S._const_diff(r, sqrt(2Sym(π)) * fs(sqrt(2 / Sym(π)) * w) + 3, w)
+    @test !S._const_diff(r + X, sqrt(2Sym(π)) * fs(sqrt(2 / Sym(π)) * w), w)
 end
