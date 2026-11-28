@@ -311,7 +311,7 @@ function _int(u::Sym, depth::Int)
             w === nothing || return _s(w)
         end
     catch err
-        (err isa GiveUp && !isequal(v, u) && isequal(_s(err.integrand), u)) || rethrow()
+        (err isa GiveUp && !err.limit && !isequal(v, u) && isequal(_s(err.integrand), u)) || rethrow()
     finally
         _DEPTH[] = old
         pop!(_STACK)
