@@ -319,3 +319,15 @@ FUNCS["Coefficient"] = function (u, x, n = Sym(1))
     0 <= k < length(cs) ? cs[k+1] : SymJ.ZERO
 end
 FUNCS["Coeff"] = FUNCS["Coefficient"]
+
+# ComplexFreeQ[u]: no complex number in u. SymJ's i is (-1)^(1/2): a negative number to a
+# power that is not an integer (as a power, or as a factor of a product)
+_negroot(b::Sym, e::Sym) = _isrational(b) && _rat(b) < 0 && _isrational(e) && !_isinteger(e)
+function _complex_free(u::Sym)
+    isreal(u.num) || return false
+    u.kind == SymJ.ADD && !all(isreal, u.coefs) && return false
+    u.kind == SymJ.POW && _negroot(u.args[1], u.args[2]) && return false
+    u.kind == SymJ.MUL && any(((b, e),) -> _negroot(b, e), zip(u.args, u.exps)) && return false
+    all(_complex_free, u.args) && all(_complex_free, u.exps)
+end
+FUNCS["ComplexFreeQ"] = u -> u isa AbstractVector ? all(v -> _complex_free(_s(v)), u) : _complex_free(_s(u))

@@ -167,6 +167,7 @@ function pat(n::AbstractVector)
     h == "Add" && return Expr(:call, :+, as...)
     h == "Power" && return Expr(:call, :^, as...)
     h == "Rational" && return Expr(:call, ://, as...)
+    h == "Complex" && return _pat_complex(args(n))
     w = wildcard(h)
     if w !== nothing && w[2] === :blank         # F_[u]: a head slot
         return Expr(:call, :(~$(w[1])), as...)
@@ -174,6 +175,19 @@ function pat(n::AbstractVector)
     f = get(PATTERN_HEADS, h, nothing)
     f === nothing && throw(OSRError("pattern: unsupported head $h"))
     Expr(:call, f, as...)
+end
+
+# Complex[a, b]: the number a + b i; Complex[0, fz_], an imaginary number, as i*fz with fz
+# optional (default 1: i*x has fz = 1). SymJ's matcher splits a product's coefficient, so
+# i*fz matches 3i (fz = 3) and the i*b of i*b*x (fz = b, where Mathematica binds fz = 1 and
+# b to the factor beside it: the rules use the product of the two).
+function _pat_complex(as)
+    length(as) == 2 || throw(OSRError("pattern: Complex with $(length(as)) arguments"))
+    re, ib = as
+    re isa Real && ib isa Real && return Sym(re) + Sym(ib) * Sym(im)
+    w = ib isa AbstractString ? wildcard(ib) : nothing
+    (re == 0 && w !== nothing) || throw(OSRError("pattern: unsupported Complex"))
+    :($(Sym(im)) * ~(!$(w[1])))
 end
 
 function _nonzero_factor(n, p)
