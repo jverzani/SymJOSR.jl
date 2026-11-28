@@ -418,7 +418,8 @@ end
         d * S.FUNCS["PolyLog"](2, -exp(b * X + a)) / b^2 + d * S.FUNCS["PolyLog"](2, exp(b * X + a)) / b^2
     @test S._formal_match(r, e) && S._formal_match(r + 3, e)      # up to a constant
     @test !S._formal_match(r + X, e)
-    @test S._formal_match(sin(X)^2, -cos(X)^2)
+    @test S._formal_match(im * cot(im * a * X), coth(a * X))          # Mathematica's Cot[I u] = -I Coth[u]
+    @test S._formal_match((X + 1) * (X - 1) / (X^2 - 1) + log(X), log(X))
     u = (c + d * X) * csch(a + b * X)
     @test first(S._check(u, S.load_rules(), 30.0; expected = e)) === :verified
 end
